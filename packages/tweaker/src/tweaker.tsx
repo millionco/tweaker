@@ -191,8 +191,18 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
       }
     };
 
+    const handleMiddleClick = (event: MouseEvent) => {
+      if (event.button !== 1) return;
+      event.preventDefault();
+      setPicking(true);
+    };
+
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    document.addEventListener("auxclick", handleMiddleClick, true);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("auxclick", handleMiddleClick, true);
+    };
   }, [hasModifications]);
 
   useEffect(() => {
