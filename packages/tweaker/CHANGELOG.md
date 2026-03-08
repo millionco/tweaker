@@ -1,5 +1,11 @@
 # tweaker
 
+## 0.3.1
+
+### Patch Changes
+
+- Revert to mouse position control instead of scroll gestures
+
 ## 0.3.0
 
 ### Minor Changes

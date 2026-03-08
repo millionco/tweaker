@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, useMotionValue, useTransform, AnimatePresence } from "motion/react";
 import type { Modification, TweakerProps } from "./types";
 import { GRAY_SCALES } from "./gray-scales";
-import { SLIDER_MAX, BAR_WIDTH_PX, TYPING_RESET_DELAY_MS, FONT_WEIGHT_MIN, FONT_WEIGHT_MAX, SCROLL_COLOR_SENSITIVITY, SCROLL_WEIGHT_SENSITIVITY } from "./constants";
+import { SLIDER_MAX, BAR_WIDTH_PX, TYPING_RESET_DELAY_MS, FONT_WEIGHT_MIN, FONT_WEIGHT_MAX } from "./constants";
 import { getColorAtPosition, oklchToCssString, parseRgb, rgbToOklch, findClosestPosition } from "./utils/color";
 import { getSelector, getTextPreview } from "./utils/dom";
 import { applyModification, restoreModification, roundToStep } from "./utils/modification";
@@ -55,34 +55,30 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
   useEffect(() => {
     if (!hasModifications || picking) return;
 
-    const handleWheel = (event: WheelEvent) => {
-      event.preventDefault();
+    const handlePointerMove = (event: PointerEvent) => {
       const index = activeIndexRef.current;
       if (index < 0) return;
 
+      const colorPercent = Math.max(0, Math.min(1, 1 - event.clientY / window.innerHeight));
+      const colorValue = roundToStep(colorPercent * SLIDER_MAX);
+      const weightPercValue = Math.max(0, Math.min(1, event.clientX / window.innerWidth));
+      const fontWeight = FONT_WEIGHT_MIN + weightPercValue * (FONT_WEIGHT_MAX - FONT_WEIGHT_MIN);
+
+      fillPercent.jump(colorPercent * 100);
+      weightPercent.jump(weightPercValue * 100);
+
       setModifications((previous) => {
         const updated = [...previous];
-        const current = updated[index];
-
-        const newPosition = Math.max(0, Math.min(SLIDER_MAX,
-          current.position - event.deltaY * SCROLL_COLOR_SENSITIVITY));
-        const newWeight = Math.max(FONT_WEIGHT_MIN, Math.min(FONT_WEIGHT_MAX,
-          current.fontWeight + event.deltaX * SCROLL_WEIGHT_SENSITIVITY));
-
-        updated[index] = { ...current, position: roundToStep(newPosition), fontWeight: newWeight };
+        updated[index] = { ...updated[index], position: colorValue, fontWeight };
         applyModification(updated[index], scalesRef.current, activeScaleRef.current);
-
-        fillPercent.jump((updated[index].position / SLIDER_MAX) * 100);
-        weightPercent.jump(((newWeight - FONT_WEIGHT_MIN) / (FONT_WEIGHT_MAX - FONT_WEIGHT_MIN)) * 100);
-        setInputValue(String(updated[index].position));
-
         return updated;
       });
+      setInputValue(String(colorValue));
     };
 
-    document.addEventListener("wheel", handleWheel, { passive: false, capture: true });
+    document.addEventListener("pointermove", handlePointerMove, true);
     return () => {
-      document.removeEventListener("wheel", handleWheel, true);
+      document.removeEventListener("pointermove", handlePointerMove, true);
     };
   }, [hasModifications, picking, fillPercent, weightPercent]);
 
