@@ -5,12 +5,21 @@ export interface GrayScale {
   shades: Record<string, string>;
 }
 
+export interface CssRuleMatch {
+  selector: string;
+  declaration: string;
+}
+
 export interface Modification {
   element: HTMLElement;
   selector: string;
   componentName: string | null;
   sourceFile: string | null;
+  sourceLineNumber: number | null;
   textPreview: string;
+  fullClassName: string;
+  tailwindPaddingClasses: string[];
+  matchedCssRule: CssRuleMatch | null;
   originalInlineBg: string;
   originalInlineColor: string;
   originalInlineBorderColor: string;
@@ -23,6 +32,10 @@ export interface Modification {
   originalInlineMarginBottom: string;
   originalInlineMarginLeft: string;
   originalInlineMarginRight: string;
+  originalPaddingTop: number;
+  originalPaddingRight: number;
+  originalPaddingBottom: number;
+  originalPaddingLeft: number;
   property: "bg" | "text" | "border";
   position: number;
   fontSize: number;

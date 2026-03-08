@@ -2,11 +2,38 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import type { Modification, TweakerProps } from "./types";
 import { GRAY_SCALES } from "./gray-scales";
-import { SLIDER_MAX, TYPING_RESET_DELAY_MS, FONT_SIZE_MIN_PX, FONT_SIZE_MAX_PX, PADDING_MIN_PX, PADDING_MAX_PX, MOUSE_COLOR_SENSITIVITY, MOUSE_SIZE_SENSITIVITY, MOUSE_PADDING_SENSITIVITY, MINIMAP_WIDTH_PX, MINIMAP_HEIGHT_PX, THUMB_SIZE_PX } from "./constants";
-import { getColorAtPosition, oklchToCssString, parseRgb, rgbToOklch, findClosestPosition } from "./utils/color";
-import { getSelector, getTextPreview } from "./utils/dom";
-import { applyModification, restoreModification, roundToStep, roundToHalf } from "./utils/modification";
+import {
+  SLIDER_MAX,
+  TYPING_RESET_DELAY_MS,
+  FONT_SIZE_MIN_PX,
+  FONT_SIZE_MAX_PX,
+  PADDING_MIN_PX,
+  PADDING_MAX_PX,
+  MOUSE_COLOR_SENSITIVITY,
+  MOUSE_SIZE_SENSITIVITY,
+  MOUSE_PADDING_SENSITIVITY,
+  MINIMAP_WIDTH_PX,
+  MINIMAP_HEIGHT_PX,
+  THUMB_SIZE_PX,
+} from "./constants";
+import {
+  getColorAtPosition,
+  oklchToCssString,
+  parseRgb,
+  rgbToOklch,
+  findClosestPosition,
+} from "./utils/color";
+import { getSelector, getTextPreview, getElementClassName } from "./utils/dom";
+import {
+  applyModification,
+  restoreModification,
+  roundToStep,
+  roundToHalf,
+} from "./utils/modification";
 import { generatePrompt } from "./utils/prompt";
+import { getReactFiberInfo } from "./utils/react-fiber";
+import { parseTailwindPaddingClasses } from "./utils/tailwind";
+import { getMatchedPaddingRule } from "./utils/css-rules";
 
 const requestLock = () => {
   if (!document.pointerLockElement) {
@@ -81,13 +108,39 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
         const current = updated[index];
 
         if (isPadding) {
-          const newPaddingY = Math.max(PADDING_MIN_PX, Math.min(PADDING_MAX_PX, current.paddingY - event.movementY * MOUSE_PADDING_SENSITIVITY));
-          const newPaddingX = Math.max(PADDING_MIN_PX, Math.min(PADDING_MAX_PX, current.paddingX + event.movementX * MOUSE_PADDING_SENSITIVITY));
-          updated[index] = { ...current, paddingY: Math.round(newPaddingY), paddingX: Math.round(newPaddingX) };
+          const newPaddingY = Math.max(
+            PADDING_MIN_PX,
+            Math.min(
+              PADDING_MAX_PX,
+              current.paddingY - event.movementY * MOUSE_PADDING_SENSITIVITY,
+            ),
+          );
+          const newPaddingX = Math.max(
+            PADDING_MIN_PX,
+            Math.min(
+              PADDING_MAX_PX,
+              current.paddingX + event.movementX * MOUSE_PADDING_SENSITIVITY,
+            ),
+          );
+          updated[index] = {
+            ...current,
+            paddingY: Math.round(newPaddingY),
+            paddingX: Math.round(newPaddingX),
+          };
         } else {
-          const newPosition = Math.max(0, Math.min(SLIDER_MAX, current.position - event.movementY * MOUSE_COLOR_SENSITIVITY));
-          const newSize = Math.max(FONT_SIZE_MIN_PX, Math.min(FONT_SIZE_MAX_PX, current.fontSize + event.movementX * MOUSE_SIZE_SENSITIVITY));
-          updated[index] = { ...current, position: roundToStep(newPosition), fontSize: roundToHalf(newSize) };
+          const newPosition = Math.max(
+            0,
+            Math.min(SLIDER_MAX, current.position - event.movementY * MOUSE_COLOR_SENSITIVITY),
+          );
+          const newSize = Math.max(
+            FONT_SIZE_MIN_PX,
+            Math.min(FONT_SIZE_MAX_PX, current.fontSize + event.movementX * MOUSE_SIZE_SENSITIVITY),
+          );
+          updated[index] = {
+            ...current,
+            position: roundToStep(newPosition),
+            fontSize: roundToHalf(newSize),
+          };
         }
 
         applyModification(updated[index], scalesRef.current, activeScaleRef.current);
@@ -111,7 +164,11 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
       if (event.key === "Escape") {
         event.preventDefault();
         releaseLock();
-        const prompt = generatePrompt(modificationsRef.current, scalesRef.current, activeScaleRef.current);
+        const prompt = generatePrompt(
+          modificationsRef.current,
+          scalesRef.current,
+          activeScaleRef.current,
+        );
         navigator.clipboard.writeText(prompt);
         modificationsRef.current.forEach(restoreModification);
         setModifications([]);
@@ -122,7 +179,11 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
       if (event.key === " ") {
         event.preventDefault();
         releaseLock();
-        const prompt = generatePrompt(modificationsRef.current, scalesRef.current, activeScaleRef.current);
+        const prompt = generatePrompt(
+          modificationsRef.current,
+          scalesRef.current,
+          activeScaleRef.current,
+        );
         navigator.clipboard.writeText(prompt);
         setPicking(true);
       }
@@ -244,7 +305,14 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
     if (activeMod) {
       applyModification(activeMod, scales, activeScale);
     }
-  }, [activeMod?.position, activeMod?.fontSize, activeMod?.paddingX, activeMod?.paddingY, activeScale, scales]);
+  }, [
+    activeMod?.position,
+    activeMod?.fontSize,
+    activeMod?.paddingX,
+    activeMod?.paddingY,
+    activeScale,
+    scales,
+  ]);
 
   useEffect(() => {
     if (!picking) return;
@@ -282,7 +350,11 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
       const hasBorder = borderAlpha > 0 && parseFloat(computed.borderWidth) > 0;
 
       const hasBackground = bgAlpha > 0;
-      const defaultProperty: "bg" | "text" | "border" = hasBackground ? "bg" : hasBorder ? "border" : "text";
+      const defaultProperty: "bg" | "text" | "border" = hasBackground
+        ? "bg"
+        : hasBorder
+          ? "border"
+          : "text";
       const targetOklch =
         defaultProperty === "bg"
           ? rgbToOklch(bgRed, bgGreen, bgBlue)
@@ -292,15 +364,26 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
 
       const position = findClosestPosition(scales, activeScale, targetOklch);
       const currentSize = parseFloat(computed.fontSize) || 16;
-      const currentPaddingY = parseFloat(computed.paddingTop) || 0;
-      const currentPaddingX = parseFloat(computed.paddingLeft) || 0;
+      const currentPaddingTop = parseFloat(computed.paddingTop) || 0;
+      const currentPaddingRight = parseFloat(computed.paddingRight) || 0;
+      const currentPaddingBottom = parseFloat(computed.paddingBottom) || 0;
+      const currentPaddingLeft = parseFloat(computed.paddingLeft) || 0;
+
+      const elementClassName = getElementClassName(target);
+      const tailwindPadding = parseTailwindPaddingClasses(elementClassName);
+      const fiberInfo = getReactFiberInfo(target);
+      const matchedCssRule = getMatchedPaddingRule(target);
 
       const newModification: Modification = {
         element: target,
         selector: getSelector(target),
-        componentName: null,
-        sourceFile: null,
+        componentName: fiberInfo.componentName,
+        sourceFile: fiberInfo.sourceFile,
+        sourceLineNumber: fiberInfo.sourceLineNumber,
         textPreview: getTextPreview(target),
+        fullClassName: elementClassName,
+        tailwindPaddingClasses: tailwindPadding.map((parsed) => parsed.original),
+        matchedCssRule,
         originalInlineBg: target.style.backgroundColor,
         originalInlineColor: target.style.color,
         originalInlineBorderColor: target.style.borderColor,
@@ -313,11 +396,15 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
         originalInlineMarginBottom: target.style.marginBottom,
         originalInlineMarginLeft: target.style.marginLeft,
         originalInlineMarginRight: target.style.marginRight,
+        originalPaddingTop: currentPaddingTop,
+        originalPaddingRight: currentPaddingRight,
+        originalPaddingBottom: currentPaddingBottom,
+        originalPaddingLeft: currentPaddingLeft,
         property: defaultProperty,
         position,
         fontSize: currentSize,
-        paddingX: currentPaddingX,
-        paddingY: currentPaddingY,
+        paddingX: currentPaddingLeft,
+        paddingY: currentPaddingTop,
       };
 
       setModifications((previous) => [...previous, newModification]);
@@ -343,7 +430,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
 
   const fillColor = activeMod
     ? oklchToCssString(getColorAtPosition(scales, activeScale, activeMod.position))
-    : scales[activeScale]?.shades["500"] ?? "rgba(255,255,255,0.3)";
+    : (scales[activeScale]?.shades["500"] ?? "rgba(255,255,255,0.3)");
 
   const propertyLabel =
     activeMod?.property === "text" ? "F" : activeMod?.property === "border" ? "D" : "B";
@@ -352,12 +439,15 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
 
   const thumbX = activeMod
     ? isPaddingMode
-      ? ((activeMod.paddingX - PADDING_MIN_PX) / (PADDING_MAX_PX - PADDING_MIN_PX)) * (MINIMAP_WIDTH_PX - THUMB_SIZE_PX)
-      : ((activeMod.fontSize - FONT_SIZE_MIN_PX) / (FONT_SIZE_MAX_PX - FONT_SIZE_MIN_PX)) * (MINIMAP_WIDTH_PX - THUMB_SIZE_PX)
+      ? ((activeMod.paddingX - PADDING_MIN_PX) / (PADDING_MAX_PX - PADDING_MIN_PX)) *
+        (MINIMAP_WIDTH_PX - THUMB_SIZE_PX)
+      : ((activeMod.fontSize - FONT_SIZE_MIN_PX) / (FONT_SIZE_MAX_PX - FONT_SIZE_MIN_PX)) *
+        (MINIMAP_WIDTH_PX - THUMB_SIZE_PX)
     : 0;
   const thumbY = activeMod
     ? isPaddingMode
-      ? (1 - (activeMod.paddingY - PADDING_MIN_PX) / (PADDING_MAX_PX - PADDING_MIN_PX)) * (MINIMAP_HEIGHT_PX - THUMB_SIZE_PX)
+      ? (1 - (activeMod.paddingY - PADDING_MIN_PX) / (PADDING_MAX_PX - PADDING_MIN_PX)) *
+        (MINIMAP_HEIGHT_PX - THUMB_SIZE_PX)
       : (1 - activeMod.position / SLIDER_MAX) * (MINIMAP_HEIGHT_PX - THUMB_SIZE_PX)
     : MINIMAP_HEIGHT_PX - THUMB_SIZE_PX;
 
@@ -390,9 +480,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
             />
           </div>
           <div style={minimapModeStyle}>
-            <span style={minimapLabelStyle}>
-              {isPaddingMode ? "⇧ Padding" : "Style"}
-            </span>
+            <span style={minimapLabelStyle}>{isPaddingMode ? "⇧ Padding" : "Style"}</span>
           </div>
           <div style={minimapValuesStyle}>
             <span style={minimapLabelStyle}>
@@ -404,9 +492,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
             </span>
             {!picking && activeMod && (
               <span style={minimapLabelStyle}>
-                {isPaddingMode
-                  ? `X ${activeMod.paddingX}px`
-                  : `${activeMod.fontSize}px`}
+                {isPaddingMode ? `X ${activeMod.paddingX}px` : `${activeMod.fontSize}px`}
               </span>
             )}
           </div>

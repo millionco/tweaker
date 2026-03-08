@@ -15,3 +15,8 @@ export const getTextPreview = (element: HTMLElement): string => {
     ? `${text.slice(0, TEXT_PREVIEW_MAX_LENGTH)}…`
     : text;
 };
+
+export const getElementClassName = (element: HTMLElement): string => {
+  if (typeof element.className === "string") return element.className;
+  return element.getAttribute("class") || "";
+};
