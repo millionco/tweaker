@@ -1,8 +1,14 @@
 {
-  "name": "tweaker",
-  "version": "0.0.1",
+  "name": "@ben-million/tweaker",
+  "version": "0.0.2",
   "description": "A dev tool for tweaking colors along gray scales in React apps",
-  "keywords": ["react", "dev-tools", "color", "gray-scale", "design-system"],
+  "keywords": [
+    "react",
+    "dev-tools",
+    "color",
+    "gray-scale",
+    "design-system"
+  ],
   "homepage": "https://github.com/millionco/tweaker#readme",
   "bugs": {
     "url": "https://github.com/millionco/tweaker/issues"
@@ -14,7 +20,9 @@
     "url": "https://github.com/millionco/tweaker.git",
     "directory": "packages/tweaker"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "exports": {
     ".": {
