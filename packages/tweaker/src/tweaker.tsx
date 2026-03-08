@@ -1,11 +1,38 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import type { Modification, TweakerProps } from "./types";
 import { GRAY_SCALES } from "./gray-scales";
-import { SLIDER_MAX, TYPING_RESET_DELAY_MS, FONT_SIZE_MIN_PX, FONT_SIZE_MAX_PX, PADDING_MIN_PX, PADDING_MAX_PX, MOUSE_COLOR_SENSITIVITY, MOUSE_SIZE_SENSITIVITY, MOUSE_PADDING_SENSITIVITY, MINIMAP_WIDTH_PX, MINIMAP_HEIGHT_PX, THUMB_SIZE_PX } from "./constants";
-import { getColorAtPosition, oklchToCssString, parseRgb, rgbToOklch, findClosestPosition } from "./utils/color";
+import {
+  SLIDER_MAX,
+  TYPING_RESET_DELAY_MS,
+  FONT_SIZE_MIN_PX,
+  FONT_SIZE_MAX_PX,
+  PADDING_MIN_PX,
+  PADDING_MAX_PX,
+  MOUSE_COLOR_SENSITIVITY,
+  MOUSE_SIZE_SENSITIVITY,
+  MOUSE_PADDING_SENSITIVITY,
+  MINIMAP_WIDTH_PX,
+  MINIMAP_HEIGHT_PX,
+  THUMB_SIZE_PX,
+  DRAG_PREVIEW_LINE_THICKNESS_PX,
+  DRAG_PREVIEW_PARENT_RADIUS_PX,
+  DRAG_PREVIEW_LABEL_OFFSET_PX,
+} from "./constants";
+import {
+  getColorAtPosition,
+  oklchToCssString,
+  parseRgb,
+  rgbToOklch,
+  findClosestPosition,
+} from "./utils/color";
 import { getSelector, getTextPreview } from "./utils/dom";
-import { applyModification, restoreModification, roundToStep, roundToHalf } from "./utils/modification";
+import {
+  applyModification,
+  restoreModification,
+  roundToStep,
+  roundToHalf,
+} from "./utils/modification";
 import { generatePrompt } from "./utils/prompt";
 import { gatherRepositionContext } from "./utils/nearby";
 import type { RepositionContext } from "./utils/nearby";
@@ -20,6 +47,19 @@ const releaseLock = () => {
   if (document.pointerLockElement) {
     document.exitPointerLock();
   }
+};
+
+const toViewportLeft = (pageLeft: number): number => pageLeft - window.scrollX;
+
+const toViewportTop = (pageTop: number): number => pageTop - window.scrollY;
+
+const describePreviewSibling = (description: RepositionContext["previousSibling"]): string => {
+  if (!description) return "";
+
+  const descriptionParts = [description.selector];
+  if (description.componentName) descriptionParts.unshift(`<${description.componentName}>`);
+  if (description.textPreview) descriptionParts.push(`"${description.textPreview}"`);
+  return descriptionParts.join(" ");
 };
 
 export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: TweakerProps) => {
@@ -96,12 +136,28 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
             translateY: current.translateY + event.movementY,
           };
         } else if (event.shiftKey) {
-          const newPaddingY = Math.max(PADDING_MIN_PX, Math.min(PADDING_MAX_PX, current.paddingY - event.movementY * MOUSE_PADDING_SENSITIVITY));
+          const newPaddingY = Math.max(
+            PADDING_MIN_PX,
+            Math.min(
+              PADDING_MAX_PX,
+              current.paddingY - event.movementY * MOUSE_PADDING_SENSITIVITY,
+            ),
+          );
           updated[index] = { ...current, paddingY: Math.round(newPaddingY) };
         } else {
-          const newPosition = Math.max(0, Math.min(SLIDER_MAX, current.position - event.movementY * MOUSE_COLOR_SENSITIVITY));
-          const newSize = Math.max(FONT_SIZE_MIN_PX, Math.min(FONT_SIZE_MAX_PX, current.fontSize + event.movementX * MOUSE_SIZE_SENSITIVITY));
-          updated[index] = { ...current, position: roundToStep(newPosition), fontSize: roundToHalf(newSize) };
+          const newPosition = Math.max(
+            0,
+            Math.min(SLIDER_MAX, current.position - event.movementY * MOUSE_COLOR_SENSITIVITY),
+          );
+          const newSize = Math.max(
+            FONT_SIZE_MIN_PX,
+            Math.min(FONT_SIZE_MAX_PX, current.fontSize + event.movementX * MOUSE_SIZE_SENSITIVITY),
+          );
+          updated[index] = {
+            ...current,
+            position: roundToStep(newPosition),
+            fontSize: roundToHalf(newSize),
+          };
         }
 
         applyModification(updated[index], scalesRef.current, activeScaleRef.current);
@@ -127,6 +183,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
       if (modification.translateX !== 0 || modification.translateY !== 0) {
         const context = await gatherRepositionContext(
           modification.element,
+          modification.dragOriginRect,
           modification.translateX,
           modification.translateY,
         );
@@ -144,7 +201,12 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
         event.preventDefault();
         releaseLock();
         const contextMap = await gatherRepositionContexts(modificationsRef.current);
-        const prompt = generatePrompt(modificationsRef.current, scalesRef.current, activeScaleRef.current, contextMap);
+        const prompt = generatePrompt(
+          modificationsRef.current,
+          scalesRef.current,
+          activeScaleRef.current,
+          contextMap,
+        );
         navigator.clipboard.writeText(prompt);
         modificationsRef.current.forEach(restoreModification);
         setModifications([]);
@@ -156,7 +218,12 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
         event.preventDefault();
         releaseLock();
         const contextMap = await gatherRepositionContexts(modificationsRef.current);
-        const prompt = generatePrompt(modificationsRef.current, scalesRef.current, activeScaleRef.current, contextMap);
+        const prompt = generatePrompt(
+          modificationsRef.current,
+          scalesRef.current,
+          activeScaleRef.current,
+          contextMap,
+        );
         navigator.clipboard.writeText(prompt);
         setPicking(true);
       }
@@ -269,7 +336,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
 
   useEffect(() => {
     return () => {
-      modifications.forEach(restoreModification);
+      modificationsRef.current.forEach(restoreModification);
       releaseLock();
     };
   }, []);
@@ -278,7 +345,19 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
     if (activeMod) {
       applyModification(activeMod, scales, activeScale);
     }
-  }, [activeMod?.position, activeMod?.fontSize, activeMod?.paddingY, activeScale, scales]);
+  }, [activeMod, activeScale, scales]);
+
+  const activeRepositionContext = useMemo(() => {
+    if (!activeMod || picking) return null;
+    if (activeMod.translateX === 0 && activeMod.translateY === 0) return null;
+
+    return gatherRepositionContext(
+      activeMod.element,
+      activeMod.dragOriginRect,
+      activeMod.translateX,
+      activeMod.translateY,
+    );
+  }, [activeMod, picking]);
 
   useEffect(() => {
     if (!picking) return;
@@ -316,7 +395,11 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
       const hasBorder = borderAlpha > 0 && parseFloat(computed.borderWidth) > 0;
 
       const hasBackground = bgAlpha > 0;
-      const defaultProperty: "bg" | "text" | "border" = hasBackground ? "bg" : hasBorder ? "border" : "text";
+      const defaultProperty: "bg" | "text" | "border" = hasBackground
+        ? "bg"
+        : hasBorder
+          ? "border"
+          : "text";
       const targetOklch =
         defaultProperty === "bg"
           ? rgbToOklch(bgRed, bgGreen, bgBlue)
@@ -327,13 +410,20 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
       const position = findClosestPosition(scales, activeScale, targetOklch);
       const currentSize = parseFloat(computed.fontSize) || 16;
       const currentPaddingY = parseFloat(computed.paddingTop) || 0;
+      const targetRect = target.getBoundingClientRect();
 
       let componentName: string | null = null;
       let sourceFile: string | null = null;
       try {
-        const reactGrab = (window as unknown as Record<string, unknown>).__REACT_GRAB_MODULE__ as {
-          getStack: (element: Element) => Promise<Array<{ fileName?: string; lineNumber?: number; functionName?: string }>>;
-        } | undefined;
+        const reactGrab = (window as unknown as Record<string, unknown>).__REACT_GRAB_MODULE__ as
+          | {
+              getStack: (
+                element: Element,
+              ) => Promise<
+                Array<{ fileName?: string; lineNumber?: number; functionName?: string }>
+              >;
+            }
+          | undefined;
         if (reactGrab?.getStack) {
           const stack = await reactGrab.getStack(target);
           if (stack) {
@@ -371,6 +461,12 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
         paddingY: currentPaddingY,
         translateX: 0,
         translateY: 0,
+        dragOriginRect: {
+          left: targetRect.left + window.scrollX,
+          top: targetRect.top + window.scrollY,
+          width: targetRect.width,
+          height: targetRect.height,
+        },
       };
 
       setModifications((previous) => [...previous, newModification]);
@@ -396,7 +492,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
 
   const fillColor = activeMod
     ? oklchToCssString(getColorAtPosition(scales, activeScale, activeMod.position))
-    : scales[activeScale]?.shades["500"] ?? "rgba(255,255,255,0.3)";
+    : (scales[activeScale]?.shades["500"] ?? "rgba(255,255,255,0.3)");
 
   const propertyLabel =
     activeMod?.property === "text" ? "F" : activeMod?.property === "border" ? "D" : "B";
@@ -404,16 +500,73 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
   const isPaddingMode = shiftHeld && hasModifications && !picking;
   const isDragMode = controlHeld && hasModifications && !picking;
 
-  const guideRect = activeMod && !picking && !spaceHeld ? activeMod.element.getBoundingClientRect() : null;
+  const guideRect =
+    activeMod && !picking && !spaceHeld ? activeMod.element.getBoundingClientRect() : null;
+  const previewParentRect = activeRepositionContext
+    ? {
+        left: toViewportLeft(activeRepositionContext.parentContentRect.left),
+        top: toViewportTop(activeRepositionContext.parentContentRect.top),
+        width: activeRepositionContext.parentContentRect.width,
+        height: activeRepositionContext.parentContentRect.height,
+      }
+    : null;
+  const previewTargetRect = activeRepositionContext
+    ? {
+        left: toViewportLeft(activeRepositionContext.targetRect.left),
+        top: toViewportTop(activeRepositionContext.targetRect.top),
+        width: activeRepositionContext.targetRect.width,
+        height: activeRepositionContext.targetRect.height,
+      }
+    : null;
+  const previewIsHorizontal = activeRepositionContext?.parentLayout.flowAxis === "horizontal";
+  const previewLineStyle: React.CSSProperties | null =
+    activeRepositionContext && previewParentRect && previewTargetRect
+      ? previewIsHorizontal
+        ? {
+            position: "absolute",
+            left: previewTargetRect.left,
+            top: previewParentRect.top,
+            width: DRAG_PREVIEW_LINE_THICKNESS_PX,
+            height: previewParentRect.height,
+            background: "rgba(168, 85, 247, 0.8)",
+            boxShadow: "0 0 0 1px rgba(255,255,255,0.15)",
+          }
+        : {
+            position: "absolute",
+            left: previewParentRect.left,
+            top: previewTargetRect.top,
+            width: previewParentRect.width,
+            height: DRAG_PREVIEW_LINE_THICKNESS_PX,
+            background: "rgba(168, 85, 247, 0.8)",
+            boxShadow: "0 0 0 1px rgba(255,255,255,0.15)",
+          }
+      : null;
+  const previewPositionLabel = activeRepositionContext
+    ? activeRepositionContext.previousSibling
+      ? `after ${describePreviewSibling(activeRepositionContext.previousSibling)}`
+      : activeRepositionContext.nextSibling
+        ? `before ${describePreviewSibling(activeRepositionContext.nextSibling)}`
+        : `child ${activeRepositionContext.targetChildIndex + 1}`
+    : "";
+  const previewParentLabel = activeRepositionContext
+    ? `${activeRepositionContext.targetParent.componentName ? `<${activeRepositionContext.targetParent.componentName}> ` : ""}${activeRepositionContext.targetParent.selector}`
+    : "";
+  const previewGapLabel = activeRepositionContext
+    ? previewIsHorizontal
+      ? `← ${activeRepositionContext.gapBefore}px  → ${activeRepositionContext.gapAfter}px`
+      : `↑ ${activeRepositionContext.gapBefore}px  ↓ ${activeRepositionContext.gapAfter}px`
+    : "";
 
   const thumbX = activeMod
     ? isPaddingMode
       ? (MINIMAP_WIDTH_PX - THUMB_SIZE_PX) / 2
-      : ((activeMod.fontSize - FONT_SIZE_MIN_PX) / (FONT_SIZE_MAX_PX - FONT_SIZE_MIN_PX)) * (MINIMAP_WIDTH_PX - THUMB_SIZE_PX)
+      : ((activeMod.fontSize - FONT_SIZE_MIN_PX) / (FONT_SIZE_MAX_PX - FONT_SIZE_MIN_PX)) *
+        (MINIMAP_WIDTH_PX - THUMB_SIZE_PX)
     : 0;
   const thumbY = activeMod
     ? isPaddingMode
-      ? (1 - (activeMod.paddingY - PADDING_MIN_PX) / (PADDING_MAX_PX - PADDING_MIN_PX)) * (MINIMAP_HEIGHT_PX - THUMB_SIZE_PX)
+      ? (1 - (activeMod.paddingY - PADDING_MIN_PX) / (PADDING_MAX_PX - PADDING_MIN_PX)) *
+        (MINIMAP_HEIGHT_PX - THUMB_SIZE_PX)
       : (1 - activeMod.position / SLIDER_MAX) * (MINIMAP_HEIGHT_PX - THUMB_SIZE_PX)
     : MINIMAP_HEIGHT_PX - THUMB_SIZE_PX;
 
@@ -421,6 +574,21 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
     <>
       {guideRect && activeMod && (
         <div data-tweaker style={guidelinesContainerStyle}>
+          {previewParentRect && (
+            <div
+              style={{
+                position: "absolute",
+                left: previewParentRect.left,
+                top: previewParentRect.top,
+                width: previewParentRect.width,
+                height: previewParentRect.height,
+                boxSizing: "border-box",
+                border: "1px dashed rgba(168, 85, 247, 0.55)",
+                borderRadius: DRAG_PREVIEW_PARENT_RADIUS_PX,
+                background: "rgba(168, 85, 247, 0.04)",
+              }}
+            />
+          )}
           <div
             style={{
               position: "absolute",
@@ -459,6 +627,29 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
               />
             </>
           )}
+          {previewLineStyle && <div style={previewLineStyle} />}
+          {previewLineStyle && previewParentRect && (
+            <div
+              style={{
+                position: "absolute",
+                left: previewIsHorizontal ? (previewTargetRect?.left ?? 0) : previewParentRect.left,
+                top: previewIsHorizontal
+                  ? previewParentRect.top - DRAG_PREVIEW_LABEL_OFFSET_PX
+                  : (previewTargetRect?.top ?? 0) - DRAG_PREVIEW_LABEL_OFFSET_PX,
+                pointerEvents: "none",
+              }}
+            >
+              <span
+                style={{
+                  ...guidelineLabelStyle,
+                  color: "rgba(168, 85, 247, 0.95)",
+                  background: "rgba(168, 85, 247, 0.12)",
+                }}
+              >
+                {previewPositionLabel}
+              </span>
+            </div>
+          )}
           <div
             style={{
               position: "absolute",
@@ -470,76 +661,104 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
               pointerEvents: "none",
             }}
           >
-            <span style={guidelineLabelStyle}>
-              ↕ {activeMod.paddingY}px
-            </span>
-            <span style={{ ...guidelineLabelStyle, color: "rgba(59, 130, 246, 0.8)", background: "rgba(59, 130, 246, 0.06)" }}>
+            <span style={guidelineLabelStyle}>↕ {activeMod.paddingY}px</span>
+            <span
+              style={{
+                ...guidelineLabelStyle,
+                color: "rgba(59, 130, 246, 0.8)",
+                background: "rgba(59, 130, 246, 0.06)",
+              }}
+            >
               {activeMod.fontSize}px
             </span>
             {(activeMod.translateX !== 0 || activeMod.translateY !== 0) && (
-              <span style={{ ...guidelineLabelStyle, color: "rgba(168, 85, 247, 0.9)", background: "rgba(168, 85, 247, 0.08)" }}>
+              <span
+                style={{
+                  ...guidelineLabelStyle,
+                  color: "rgba(168, 85, 247, 0.9)",
+                  background: "rgba(168, 85, 247, 0.08)",
+                }}
+              >
                 {Math.round(activeMod.translateX)}, {Math.round(activeMod.translateY)}
               </span>
+            )}
+            {activeRepositionContext && (
+              <>
+                <span
+                  style={{
+                    ...guidelineLabelStyle,
+                    color: "rgba(168, 85, 247, 0.95)",
+                    background: "rgba(168, 85, 247, 0.12)",
+                  }}
+                >
+                  {previewParentLabel}
+                </span>
+                <span
+                  style={{
+                    ...guidelineLabelStyle,
+                    color: "rgba(34, 197, 94, 0.92)",
+                    background: "rgba(34, 197, 94, 0.08)",
+                  }}
+                >
+                  {previewGapLabel}
+                </span>
+              </>
             )}
           </div>
         </div>
       )}
       <AnimatePresence>
-      {(hasModifications || picking) && (
-        <motion.div
-          key="minimap"
-          data-tweaker
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 8 }}
-          transition={{ duration: 0.2 }}
-          style={minimapContainerStyle}
-        >
-          <div style={minimapFieldStyle}>
-            <div
-              style={{
-                position: "absolute",
-                left: thumbX,
-                top: thumbY,
-                width: THUMB_SIZE_PX,
-                height: THUMB_SIZE_PX,
-                borderRadius: "50%",
-                background: fillColor,
-                border: "2px solid rgba(255,255,255,0.9)",
-                boxShadow: "0 1px 4px rgba(0,0,0,0.4)",
-                transition: "left 50ms, top 50ms",
-              }}
-            />
-          </div>
-          <div style={minimapModeStyle}>
-            <span style={minimapLabelStyle}>
-              {isDragMode ? "⌃ Move" : isPaddingMode ? "⇧ Padding" : "Style"}
-            </span>
-          </div>
-          <div style={minimapValuesStyle}>
-            <span style={minimapLabelStyle}>
-              {picking
-                ? "Picking…"
-                : isDragMode
-                  ? `x: ${activeMod?.translateX ?? 0}`
-                  : isPaddingMode
-                    ? `↕ ${activeMod?.paddingY ?? 0}px`
-                    : `${propertyLabel} ${inputValue || "0"}`}
-            </span>
-            {!picking && activeMod && isDragMode && (
+        {(hasModifications || picking) && (
+          <motion.div
+            key="minimap"
+            data-tweaker
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.2 }}
+            style={minimapContainerStyle}
+          >
+            <div style={minimapFieldStyle}>
+              <div
+                style={{
+                  position: "absolute",
+                  left: thumbX,
+                  top: thumbY,
+                  width: THUMB_SIZE_PX,
+                  height: THUMB_SIZE_PX,
+                  borderRadius: "50%",
+                  background: fillColor,
+                  border: "2px solid rgba(255,255,255,0.9)",
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.4)",
+                  transition: "left 50ms, top 50ms",
+                }}
+              />
+            </div>
+            <div style={minimapModeStyle}>
               <span style={minimapLabelStyle}>
-                {`y: ${activeMod.translateY}`}
+                {isDragMode ? "⌃ Move" : isPaddingMode ? "⇧ Padding" : "Style"}
               </span>
-            )}
-            {!picking && activeMod && !isPaddingMode && !isDragMode && (
+            </div>
+            <div style={minimapValuesStyle}>
               <span style={minimapLabelStyle}>
-                {`${activeMod.fontSize}px`}
+                {picking
+                  ? "Picking…"
+                  : isDragMode
+                    ? `x: ${activeMod?.translateX ?? 0}`
+                    : isPaddingMode
+                      ? `↕ ${activeMod?.paddingY ?? 0}px`
+                      : `${propertyLabel} ${inputValue || "0"}`}
               </span>
-            )}
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+              {!picking && activeMod && isDragMode && (
+                <span style={minimapLabelStyle}>{`y: ${activeMod.translateY}`}</span>
+              )}
+              {!picking && activeMod && !isPaddingMode && !isDragMode && (
+                <span style={minimapLabelStyle}>{`${activeMod.fontSize}px`}</span>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 };

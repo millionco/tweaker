@@ -5,6 +5,13 @@ export interface GrayScale {
   shades: Record<string, string>;
 }
 
+export interface ElementRectSnapshot {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 export interface Modification {
   element: HTMLElement;
   selector: string;
@@ -26,6 +33,7 @@ export interface Modification {
   translateX: number;
   translateY: number;
   originalInlineTransform: string;
+  dragOriginRect: ElementRectSnapshot;
 }
 
 export interface TweakerProps {
