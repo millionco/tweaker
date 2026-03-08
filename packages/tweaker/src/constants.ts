@@ -1,7 +1,22 @@
 export const SLIDER_MAX = 10;
 export const TEXT_PREVIEW_MAX_LENGTH = 30;
 export const TYPING_RESET_DELAY_MS = 1500;
-export const SHADE_KEYS = ["50", "100", "200", "300", "400", "500", "600", "700", "800", "900", "950"];
+export const SHADE_KEYS = [
+  "50",
+  "100",
+  "200",
+  "300",
+  "400",
+  "500",
+  "600",
+  "700",
+  "800",
+  "900",
+  "950",
+];
+export const SELECTOR_CLASS_LIMIT = 3;
+export const PROMPT_SIGNAL_LIMIT = 8;
+export const CONTEXT_ANCESTOR_DEPTH = 4;
 export const FONT_SIZE_MIN_PX = 1;
 export const FONT_SIZE_MAX_PX = 200;
 export const PADDING_MIN_PX = -200;
@@ -12,3 +27,5 @@ export const MOUSE_PADDING_SENSITIVITY = 0.2;
 export const MINIMAP_WIDTH_PX = 160;
 export const MINIMAP_HEIGHT_PX = 100;
 export const THUMB_SIZE_PX = 10;
+export const STYLE_VALUE_COMPARISON_EPSILON = 0.05;
+export const STYLE_VALUE_MAX_FRACTION_DIGITS = 2;

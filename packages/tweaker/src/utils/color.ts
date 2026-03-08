@@ -20,7 +20,11 @@ export const formatOklch = (oklch: OKLCH): string =>
 export const oklchToCssString = (oklch: OKLCH): string =>
   `oklch(${oklch[0]} ${oklch[1]} ${oklch[2]})`;
 
-export const getColorAtPosition = (scales: Record<string, GrayScale>, scaleKey: string, position: number): OKLCH => {
+export const getColorAtPosition = (
+  scales: Record<string, GrayScale>,
+  scaleKey: string,
+  position: number,
+): OKLCH => {
   const scale = scales[scaleKey];
   if (!scale) return [0.5, 0, 0];
 
@@ -43,9 +47,7 @@ export const getClosestShadeLabel = (position: number): string => {
 };
 
 export const parseRgb = (color: string): [number, number, number, number] => {
-  const match = color.match(
-    /rgba?\(\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\s*\)/
-  );
+  const match = color.match(/rgba?\(\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\s*\)/);
   if (!match) return [0, 0, 0, 0];
   return [
     Number(match[1]),
@@ -58,17 +60,21 @@ export const parseRgb = (color: string): [number, number, number, number] => {
 export const rgbToOklch = (red: number, green: number, blue: number): OKLCH => {
   const linearize = (channel: number): number => {
     const normalized = channel / 255;
-    return normalized <= 0.04045
-      ? normalized / 12.92
-      : Math.pow((normalized + 0.055) / 1.055, 2.4);
+    return normalized <= 0.04045 ? normalized / 12.92 : Math.pow((normalized + 0.055) / 1.055, 2.4);
   };
   const linearRed = linearize(red);
   const linearGreen = linearize(green);
   const linearBlue = linearize(blue);
 
-  const lmsL = Math.cbrt(0.4122214708 * linearRed + 0.5363325363 * linearGreen + 0.0514459929 * linearBlue);
-  const lmsM = Math.cbrt(0.2119034982 * linearRed + 0.6806995451 * linearGreen + 0.1073969566 * linearBlue);
-  const lmsS = Math.cbrt(0.0883024619 * linearRed + 0.2817188376 * linearGreen + 0.6299787005 * linearBlue);
+  const lmsL = Math.cbrt(
+    0.4122214708 * linearRed + 0.5363325363 * linearGreen + 0.0514459929 * linearBlue,
+  );
+  const lmsM = Math.cbrt(
+    0.2119034982 * linearRed + 0.6806995451 * linearGreen + 0.1073969566 * linearBlue,
+  );
+  const lmsS = Math.cbrt(
+    0.0883024619 * linearRed + 0.2817188376 * linearGreen + 0.6299787005 * linearBlue,
+  );
 
   const lightness = 0.2104542553 * lmsL + 0.793617785 * lmsM - 0.0040720468 * lmsS;
   const labA = 1.9779984951 * lmsL - 2.428592205 * lmsM + 0.4505937099 * lmsS;
@@ -80,7 +86,11 @@ export const rgbToOklch = (red: number, green: number, blue: number): OKLCH => {
   return [lightness, chroma, hue < 0 ? hue + 360 : hue];
 };
 
-export const findClosestPosition = (scales: Record<string, GrayScale>, scaleKey: string, targetOklch: OKLCH): number => {
+export const findClosestPosition = (
+  scales: Record<string, GrayScale>,
+  scaleKey: string,
+  targetOklch: OKLCH,
+): number => {
   let bestPosition = 0;
   let bestDistance = Infinity;
 
