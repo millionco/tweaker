@@ -198,9 +198,11 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
     };
 
     document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handleMiddleClick, true);
     document.addEventListener("auxclick", handleMiddleClick, true);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handleMiddleClick, true);
       document.removeEventListener("auxclick", handleMiddleClick, true);
     };
   }, [hasModifications]);
