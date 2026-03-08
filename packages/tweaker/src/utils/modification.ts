@@ -18,17 +18,18 @@ export const applyModification = (
   modification.element.style.fontSize = `${modification.fontSize}px`;
 
   const paddingY = Math.round(modification.paddingY);
-  const paddingX = Math.round(modification.paddingX);
 
   modification.element.style.paddingTop = `${Math.max(0, paddingY)}px`;
   modification.element.style.paddingBottom = `${Math.max(0, paddingY)}px`;
-  modification.element.style.paddingLeft = `${Math.max(0, paddingX)}px`;
-  modification.element.style.paddingRight = `${Math.max(0, paddingX)}px`;
 
   modification.element.style.marginTop = paddingY < 0 ? `${paddingY}px` : modification.originalInlineMarginTop;
   modification.element.style.marginBottom = paddingY < 0 ? `${paddingY}px` : modification.originalInlineMarginBottom;
-  modification.element.style.marginLeft = paddingX < 0 ? `${paddingX}px` : modification.originalInlineMarginLeft;
-  modification.element.style.marginRight = paddingX < 0 ? `${paddingX}px` : modification.originalInlineMarginRight;
+
+  if (modification.translateX !== 0 || modification.translateY !== 0) {
+    modification.element.style.transform = `translate(${modification.translateX}px, ${modification.translateY}px)`;
+  } else {
+    modification.element.style.transform = modification.originalInlineTransform;
+  }
 };
 
 export const restoreModification = (modification: Modification) => {
@@ -38,12 +39,9 @@ export const restoreModification = (modification: Modification) => {
   modification.element.style.fontSize = modification.originalInlineFontSize;
   modification.element.style.paddingTop = modification.originalInlinePaddingTop;
   modification.element.style.paddingBottom = modification.originalInlinePaddingBottom;
-  modification.element.style.paddingLeft = modification.originalInlinePaddingLeft;
-  modification.element.style.paddingRight = modification.originalInlinePaddingRight;
   modification.element.style.marginTop = modification.originalInlineMarginTop;
   modification.element.style.marginBottom = modification.originalInlineMarginBottom;
-  modification.element.style.marginLeft = modification.originalInlineMarginLeft;
-  modification.element.style.marginRight = modification.originalInlineMarginRight;
+  modification.element.style.transform = modification.originalInlineTransform;
 };
 
 export const roundToStep = (value: number): number =>

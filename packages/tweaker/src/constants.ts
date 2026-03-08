@@ -12,3 +12,4 @@ export const MOUSE_PADDING_SENSITIVITY = 0.2;
 export const MINIMAP_WIDTH_PX = 160;
 export const MINIMAP_HEIGHT_PX = 100;
 export const THUMB_SIZE_PX = 10;
+export const DOM_TREE_MAX_NODES = 40;

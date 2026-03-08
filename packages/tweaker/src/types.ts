@@ -17,17 +17,15 @@ export interface Modification {
   originalInlineFontSize: string;
   originalInlinePaddingTop: string;
   originalInlinePaddingBottom: string;
-  originalInlinePaddingLeft: string;
-  originalInlinePaddingRight: string;
   originalInlineMarginTop: string;
   originalInlineMarginBottom: string;
-  originalInlineMarginLeft: string;
-  originalInlineMarginRight: string;
   property: "bg" | "text" | "border";
   position: number;
   fontSize: number;
-  paddingX: number;
   paddingY: number;
+  translateX: number;
+  translateY: number;
+  originalInlineTransform: string;
 }
 
 export interface TweakerProps {
