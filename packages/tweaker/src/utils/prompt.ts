@@ -1,5 +1,5 @@
 import type { GrayScale, Modification } from "../types";
-import type { RepositionContext, TreeNode } from "./nearby";
+import type { RepositionContext, SiblingInfo, SpacingInfo, TreeNode } from "./nearby";
 import { formatOklch, getColorAtPosition, getClosestShadeLabel } from "./color";
 
 const describeModification = (modification: Modification): string => {
@@ -19,77 +19,110 @@ const describeTreeNode = (node: TreeNode): string => {
   return parts.join(" ");
 };
 
-const formatTreeNode = (node: TreeNode, indent: number, newPositionY: number): string[] => {
+const describeSibling = (sibling: SiblingInfo): string => {
+  const parts: string[] = [];
+  if (sibling.componentName) parts.push(`<${sibling.componentName}>`);
+  parts.push(sibling.selector);
+  if (sibling.textPreview) parts.push(`("${sibling.textPreview}")`);
+  return parts.join(" ");
+};
+
+const formatLayoutLabel = (layout: string | null): string => {
+  if (!layout) return "block";
+  return layout;
+};
+
+const formatSpacingLabel = (spacing: SpacingInfo | null): string => {
+  if (!spacing) return "no detected spacing";
+  if (spacing.method === "gap") return `${spacing.cssProperty}: ${spacing.value}px`;
+  if (spacing.method === "margin") return `${spacing.cssProperty}: ${spacing.value}px on children`;
+  if (spacing.method === "padding") return `padding on parent`;
+  return "no consistent spacing";
+};
+
+const formatTreeNode = (node: TreeNode, indent: number, selfTargetIndex: number | null): string[] => {
   const prefix = "    " + "  ".repeat(indent);
   const description = describeTreeNode(node);
   const marker = node.isSelf ? "★ " : "";
-  const dragSuffix = node.isSelf ? ` → DRAGGED TO Y=${newPositionY}` : "";
+
+  const layoutSuffix = node.children.length > 0 && node.layout
+    ? ` [${formatLayoutLabel(node.layout)}${node.spacingMechanism ? `, ${formatSpacingLabel(node.spacingMechanism)}` : ""}]`
+    : "";
+
+  const indexLabel = selfTargetIndex !== null && node.isSelf
+    ? ` — MOVE TO child ${selfTargetIndex}`
+    : ` — child ${node.childIndex}`;
 
   const lines: string[] = [];
-  lines.push(`${prefix}${marker}${description} — Y=${node.positionY}${dragSuffix}`);
+  lines.push(`${prefix}${marker}${description}${indexLabel}${layoutSuffix}`);
 
   for (const child of node.children) {
-    lines.push(...formatTreeNode(child, indent + 1, newPositionY));
+    lines.push(...formatTreeNode(child, indent + 1, selfTargetIndex));
   }
 
   return lines;
 };
 
-const findInsertionParent = (node: TreeNode, newY: number): TreeNode | null => {
-  for (const child of node.children) {
-    if (child.children.length > 0) {
-      const deeper = findInsertionParent(child, newY);
-      if (deeper) return deeper;
-    }
+const formatRelationalPosition = (context: RepositionContext, description: string): string[] => {
+  const lines: string[] = [];
+
+  lines.push(`- ${description}`);
+
+  lines.push(`  Relational position:`);
+  lines.push(`    Move from child ${context.originalChildIndex} → child ${context.targetChildIndex} inside ${context.parentSelector}`);
+
+  if (context.previousSibling) {
+    lines.push(`    Place after: ${describeSibling(context.previousSibling)}`);
+  } else {
+    lines.push(`    Place as first child`);
   }
-  if (node.children.length > 0 && newY >= node.positionY && newY <= node.positionY + node.height) {
-    return node;
+
+  if (context.nextSibling) {
+    lines.push(`    Place before: ${describeSibling(context.nextSibling)}`);
   }
-  return null;
+
+  return lines;
 };
 
-const computeSpacingLines = (
-  tree: TreeNode,
-  newY: number,
-  elementHeight: number,
-): string[] => {
+const formatSpacingInstruction = (context: RepositionContext): string[] => {
   const lines: string[] = [];
-  const parent = findInsertionParent(tree, newY);
-  if (!parent) return lines;
-
-  const siblings = parent.children.filter((child) => !child.isSelf);
-
-  let prevSibling: TreeNode | null = null;
-  let nextSibling: TreeNode | null = null;
-  for (let index = 0; index < siblings.length; index++) {
-    if (newY < siblings[index].positionY) {
-      nextSibling = siblings[index];
-      break;
-    }
-    prevSibling = siblings[index];
-  }
+  const spacing = context.parentSpacing;
+  const layout = context.parentLayout;
 
   lines.push("");
-  lines.push("  Spacing at target position:");
-  lines.push(`    Element height: ${elementHeight}px`);
+  lines.push(`  Parent layout: ${formatLayoutLabel(layout)}`);
 
-  if (prevSibling) {
-    const prevBottom = prevSibling.positionY + prevSibling.height;
-    const gap = newY - prevBottom;
-    lines.push(`    Gap above: ${gap}px (from ${describeTreeNode(prevSibling)} bottom at Y=${prevBottom})`);
+  if (spacing && spacing.method === "gap") {
+    lines.push(`  Parent spacing: ${spacing.cssProperty}: ${spacing.value}px`);
+    if (context.targetGapAbove === spacing.value && context.targetGapBelow === spacing.value) {
+      lines.push(`  → Reorder the JSX only. The parent's ${spacing.cssProperty} property handles spacing automatically.`);
+    } else {
+      lines.push(`  → Reorder the JSX. Parent uses ${spacing.cssProperty}: ${spacing.value}px for base spacing.`);
+      if (context.targetGapAbove !== spacing.value) {
+        const extraMargin = context.targetGapAbove - spacing.value;
+        if (extraMargin > 0) {
+          lines.push(`  → Add margin-top: ${extraMargin}px to achieve ${context.targetGapAbove}px total gap above.`);
+        } else if (context.targetGapAbove >= 0 && context.targetGapAbove < spacing.value) {
+          lines.push(`  → Add margin-top: ${extraMargin}px (negative) to reduce gap above to ${context.targetGapAbove}px.`);
+        }
+      }
+    }
+  } else if (spacing && spacing.method === "margin") {
+    lines.push(`  Sibling spacing: ${spacing.cssProperty}: ${spacing.value}px${spacing.isUniform ? " (uniform)" : " (varies)"}`);
+    if (spacing.isUniform && context.targetGapAbove === spacing.value) {
+      lines.push(`  → Reorder the JSX. Existing ${spacing.cssProperty}: ${spacing.value}px on siblings provides correct spacing.`);
+    } else {
+      lines.push(`  → Reorder the JSX and set margin-top: ${Math.max(0, context.targetGapAbove)}px on this element for the ${context.targetGapAbove}px gap above.`);
+      if (context.nextSibling && context.targetGapBelow >= 0) {
+        lines.push(`  → Set margin-bottom: ${context.targetGapBelow}px for the ${context.targetGapBelow}px gap below.`);
+      }
+    }
   } else {
-    const gap = newY - parent.positionY;
-    lines.push(`    Gap above: ${gap}px (from parent ${describeTreeNode(parent)} top at Y=${parent.positionY})`);
-  }
-
-  if (nextSibling) {
-    const elementBottom = newY + elementHeight;
-    const gap = nextSibling.positionY - elementBottom;
-    lines.push(`    Gap below: ${gap}px (to ${describeTreeNode(nextSibling)} top at Y=${nextSibling.positionY})`);
-  }
-
-  if (parent.layout) {
-    lines.push(`    Parent layout: ${parent.layout}`);
+    lines.push(`  No consistent spacing mechanism detected.`);
+    lines.push(`  → Reorder the JSX and set margin-top: ${Math.max(0, context.targetGapAbove)}px for the gap above.`);
+    if (context.nextSibling && context.targetGapBelow >= 0) {
+      lines.push(`  → Set margin-bottom: ${context.targetGapBelow}px for the gap below.`);
+    }
   }
 
   return lines;
@@ -131,15 +164,20 @@ export const generatePrompt = (
 
     const context = repositionContexts?.get(index);
     if (context && (modification.translateX !== 0 || modification.translateY !== 0)) {
-      positionLines.push(`- ${description}`);
-      if (modification.sourceFile) positionLines.push(`  Source: ${modification.sourceFile}`);
-      positionLines.push(`  Dragged from Y=${context.originalPositionY} to Y=${context.newPositionY} (offset: ${context.translateX}px horizontal, ${context.translateY}px vertical)`);
+      if (modification.sourceFile) {
+        positionLines.push(...formatRelationalPosition(context, description));
+        positionLines.push(`  Source: ${modification.sourceFile}`);
+      } else {
+        positionLines.push(...formatRelationalPosition(context, description));
+      }
+
+      positionLines.push(...formatSpacingInstruction(context));
+
       positionLines.push("");
-      positionLines.push(`  Page structure (Y = absolute position from document top):`);
-      positionLines.push(...formatTreeNode(context.tree, 0, context.newPositionY));
-      positionLines.push(...computeSpacingLines(context.tree, context.newPositionY, context.elementHeight));
+      positionLines.push(`  Page structure:`);
+      positionLines.push(...formatTreeNode(context.tree, 0, context.targetChildIndex));
       positionLines.push("");
-      positionLines.push(`  → Move this element to its new position in the JSX and adjust margin/padding to match the target spacing. Do NOT use CSS transforms.`);
+      positionLines.push(`  Do NOT use CSS transforms. Re-order the JSX and adjust margin/padding as described above.`);
     }
   });
 
@@ -166,7 +204,7 @@ export const generatePrompt = (
   if (positionLines.length > 0) {
     if (sections.length > 0) sections.push("");
     sections.push(
-      "Reposition the following element in the source code (do NOT use CSS transforms — re-order the JSX):",
+      "Reposition the following element in the source code:",
       "",
       ...positionLines,
     );
