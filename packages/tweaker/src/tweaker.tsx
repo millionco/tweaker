@@ -323,12 +323,12 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
 
   const thumbX = activeMod
     ? scrollMode === "padding"
-      ? (activeMod.paddingX / PADDING_MAX_PX) * (MINIMAP_WIDTH_PX - THUMB_SIZE_PX)
+      ? ((activeMod.paddingX - PADDING_MIN_PX) / (PADDING_MAX_PX - PADDING_MIN_PX)) * (MINIMAP_WIDTH_PX - THUMB_SIZE_PX)
       : ((activeMod.fontSize - FONT_SIZE_MIN_PX) / (FONT_SIZE_MAX_PX - FONT_SIZE_MIN_PX)) * (MINIMAP_WIDTH_PX - THUMB_SIZE_PX)
     : 0;
   const thumbY = activeMod
     ? scrollMode === "padding"
-      ? (1 - activeMod.paddingY / PADDING_MAX_PX) * (MINIMAP_HEIGHT_PX - THUMB_SIZE_PX)
+      ? (1 - (activeMod.paddingY - PADDING_MIN_PX) / (PADDING_MAX_PX - PADDING_MIN_PX)) * (MINIMAP_HEIGHT_PX - THUMB_SIZE_PX)
       : (1 - activeMod.position / SLIDER_MAX) * (MINIMAP_HEIGHT_PX - THUMB_SIZE_PX)
     : MINIMAP_HEIGHT_PX - THUMB_SIZE_PX;
 
