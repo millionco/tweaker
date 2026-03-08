@@ -7,3 +7,6 @@ export const FONT_WEIGHT_MIN = 100;
 export const FONT_WEIGHT_MAX = 900;
 export const SCROLL_COLOR_SENSITIVITY = 0.01;
 export const SCROLL_WEIGHT_SENSITIVITY = 0.5;
+export const MINIMAP_WIDTH_PX = 160;
+export const MINIMAP_HEIGHT_PX = 100;
+export const THUMB_SIZE_PX = 10;

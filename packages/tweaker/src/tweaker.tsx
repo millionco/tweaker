@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { motion, useMotionValue, useTransform, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import type { Modification, TweakerProps } from "./types";
 import { GRAY_SCALES } from "./gray-scales";
-import { SLIDER_MAX, BAR_WIDTH_PX, TYPING_RESET_DELAY_MS, FONT_WEIGHT_MIN, FONT_WEIGHT_MAX, SCROLL_COLOR_SENSITIVITY, SCROLL_WEIGHT_SENSITIVITY } from "./constants";
+import { SLIDER_MAX, TYPING_RESET_DELAY_MS, FONT_WEIGHT_MIN, FONT_WEIGHT_MAX, SCROLL_COLOR_SENSITIVITY, SCROLL_WEIGHT_SENSITIVITY, MINIMAP_WIDTH_PX, MINIMAP_HEIGHT_PX, THUMB_SIZE_PX } from "./constants";
 import { getColorAtPosition, oklchToCssString, parseRgb, rgbToOklch, findClosestPosition } from "./utils/color";
 import { getSelector, getTextPreview } from "./utils/dom";
 import { applyModification, restoreModification, roundToStep } from "./utils/modification";
@@ -15,10 +15,6 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
   const [inputValue, setInputValue] = useState("");
   const typingBuffer = useRef("");
   const typingTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const fillPercent = useMotionValue(0);
-  const fillHeight = useTransform(fillPercent, (percent) => `${percent}%`);
-  const weightPercent = useMotionValue(0);
-  const weightWidth = useTransform(weightPercent, (percent) => `${percent}%`);
 
   const activeMod = activeIndex >= 0 ? modifications[activeIndex] : null;
   const hasModifications = modifications.length > 0;
@@ -31,13 +27,6 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
   activeScaleRef.current = activeScale;
   modificationsRef.current = modifications;
   scalesRef.current = scales;
-
-  useEffect(() => {
-    if (activeMod) {
-      fillPercent.jump((activeMod.position / SLIDER_MAX) * 100);
-      weightPercent.jump(((activeMod.fontWeight - FONT_WEIGHT_MIN) / (FONT_WEIGHT_MAX - FONT_WEIGHT_MIN)) * 100);
-    }
-  }, [activeMod?.position, activeMod?.fontWeight, fillPercent, weightPercent]);
 
   const updateActivePosition = useCallback(
     (newPosition: number) => {
@@ -67,8 +56,6 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
         const newWeight = Math.max(FONT_WEIGHT_MIN, Math.min(FONT_WEIGHT_MAX, current.fontWeight + event.deltaX * SCROLL_WEIGHT_SENSITIVITY));
         updated[index] = { ...current, position: roundToStep(newPosition), fontWeight: newWeight };
         applyModification(updated[index], scalesRef.current, activeScaleRef.current);
-        fillPercent.jump((updated[index].position / SLIDER_MAX) * 100);
-        weightPercent.jump(((newWeight - FONT_WEIGHT_MIN) / (FONT_WEIGHT_MAX - FONT_WEIGHT_MIN)) * 100);
         setInputValue(String(updated[index].position));
         return updated;
       });
@@ -78,7 +65,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
     return () => {
       document.removeEventListener("wheel", handleWheel, true);
     };
-  }, [hasModifications, picking, fillPercent, weightPercent]);
+  }, [hasModifications, picking]);
 
   useEffect(() => {
     if (!hasModifications) return;
@@ -309,134 +296,107 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
   const propertyLabel =
     activeMod?.property === "text" ? "F" : activeMod?.property === "border" ? "D" : "B";
 
-  return (
-    <>
-      <AnimatePresence>
-        {hasModifications && !picking && (
-          <>
-            <motion.div
-              key="bar-vertical"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              data-tweaker
-              style={{
-                position: "fixed",
-                top: 0,
-                right: 0,
-                width: BAR_WIDTH_PX,
-                height: "100vh",
-                zIndex: 9999,
-                pointerEvents: "none",
-              }}
-            >
-              <motion.div
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: fillHeight,
-                  background: fillColor,
-                }}
-              />
-            </motion.div>
-            <motion.div
-              key="bar-horizontal"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              data-tweaker
-              style={{
-                position: "fixed",
-                bottom: 0,
-                left: 0,
-                height: BAR_WIDTH_PX,
-                width: "100vw",
-                zIndex: 9999,
-                pointerEvents: "none",
-              }}
-            >
-              <motion.div
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  bottom: 0,
-                  left: 0,
-                  width: weightWidth,
-                  background: "rgba(255,255,255,0.5)",
-                }}
-              />
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+  const thumbX = activeMod
+    ? ((activeMod.fontWeight - FONT_WEIGHT_MIN) / (FONT_WEIGHT_MAX - FONT_WEIGHT_MIN)) * (MINIMAP_WIDTH_PX - THUMB_SIZE_PX)
+    : 0;
+  const thumbY = activeMod
+    ? (1 - activeMod.position / SLIDER_MAX) * (MINIMAP_HEIGHT_PX - THUMB_SIZE_PX)
+    : MINIMAP_HEIGHT_PX - THUMB_SIZE_PX;
 
-      <motion.div
-        data-tweaker
-        layout
-        style={{
-          ...pillStyle,
-          ...(!hasModifications ? { cursor: "pointer" } : {}),
-        }}
-        animate={{
-          backgroundColor: scales[activeScale]?.shades["900"] ?? "#1A1A1A",
-        }}
-        transition={{
-          layout: { type: "spring", visualDuration: 0.3, bounce: 0.15 },
-          backgroundColor: { duration: 0.3 },
-        }}
-        onClick={!hasModifications ? () => setPicking(!picking) : undefined}
-      >
-        <AnimatePresence mode="wait">
-          <motion.span
-            key={picking ? "picking" : hasModifications ? "value" : "idle"}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.1 }}
-            style={pillTextStyle}
-          >
-            {picking
-              ? "Picking…"
-              : hasModifications
-                ? `${propertyLabel} ${inputValue || "0"} · W ${Math.round(activeMod?.fontWeight ?? 400)}`
-                : "Tweaker"}
-          </motion.span>
-        </AnimatePresence>
-      </motion.div>
-    </>
+  const bgColor900 = scales[activeScale]?.shades["900"] ?? "#1A1A1A";
+
+  return (
+    <AnimatePresence>
+      {(hasModifications || picking) && (
+        <motion.div
+          key="minimap"
+          data-tweaker
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 8 }}
+          transition={{ duration: 0.2 }}
+          style={minimapContainerStyle}
+        >
+          <div style={{ ...minimapFieldStyle, background: bgColor900 }}>
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                borderRadius: 6,
+                background: `linear-gradient(to right, ${scales[activeScale]?.shades["950"] ?? "#111"}, ${scales[activeScale]?.shades["50"] ?? "#fafafa"})`,
+                opacity: 0.15,
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                left: thumbX,
+                top: thumbY,
+                width: THUMB_SIZE_PX,
+                height: THUMB_SIZE_PX,
+                borderRadius: "50%",
+                background: fillColor,
+                border: "2px solid rgba(255,255,255,0.9)",
+                boxShadow: "0 1px 4px rgba(0,0,0,0.4)",
+                transition: "left 50ms, top 50ms",
+              }}
+            />
+          </div>
+          <div style={minimapValuesStyle}>
+            <span style={minimapLabelStyle}>
+              {picking
+                ? "Picking…"
+                : `${propertyLabel} ${inputValue || "0"}`}
+            </span>
+            {!picking && activeMod && (
+              <span style={minimapLabelStyle}>
+                W {Math.round(activeMod.fontWeight)}
+              </span>
+            )}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };
 
-const pillStyle: React.CSSProperties = {
-  position: "fixed",
-  left: 16,
-  bottom: 16,
-  zIndex: 9999,
-  background: "#1A1A1A",
-  color: "color(display-p3 1 1 1)",
-  borderRadius: 9999,
-  height: 28,
-  padding: "0 12px",
-  fontSize: 11,
+const baseTextStyle: React.CSSProperties = {
   fontFamily: "system-ui, sans-serif",
   fontWeight: 500,
   letterSpacing: "-0.03em",
   fontSynthesis: "none",
   WebkitFontSmoothing: "antialiased",
-  width: "fit-content",
-  boxShadow: "0 4px 24px #0000004D",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
 };
 
-const pillTextStyle: React.CSSProperties = {
+const minimapContainerStyle: React.CSSProperties = {
+  position: "fixed",
+  left: 16,
+  bottom: 16,
+  zIndex: 9999,
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  pointerEvents: "none",
+};
+
+const minimapFieldStyle: React.CSSProperties = {
+  position: "relative",
+  width: MINIMAP_WIDTH_PX,
+  height: MINIMAP_HEIGHT_PX,
+  borderRadius: 8,
+  boxShadow: "0 4px 24px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.08) inset",
+  overflow: "hidden",
+};
+
+const minimapValuesStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  padding: "0 2px",
+};
+
+const minimapLabelStyle: React.CSSProperties = {
+  ...baseTextStyle,
   fontSize: 11,
-  fontWeight: 500,
-  color: "color(display-p3 1 1 1)",
+  color: "rgba(255,255,255,0.6)",
   whiteSpace: "nowrap",
 };
