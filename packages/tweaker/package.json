@@ -1,0 +1,42 @@
+{
+  "name": "tweaker",
+  "version": "0.0.1",
+  "description": "A dev tool for tweaking colors along gray scales in React apps",
+  "keywords": ["react", "dev-tools", "color", "gray-scale", "design-system"],
+  "homepage": "https://github.com/millionco/tweaker#readme",
+  "bugs": {
+    "url": "https://github.com/millionco/tweaker/issues"
+  },
+  "license": "MIT",
+  "author": "Million Co.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/millionco/tweaker.git",
+    "directory": "packages/tweaker"
+  },
+  "files": ["dist"],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "dev": "tsdown --watch",
+    "build": "rm -rf dist && NODE_ENV=production tsdown",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "motion": "^12.0.0"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tsdown": "^0.20.3"
+  }
+}

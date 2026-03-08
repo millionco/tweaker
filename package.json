@@ -1,0 +1,34 @@
+{
+  "name": "tweaker",
+  "private": true,
+  "homepage": "https://github.com/millionco/tweaker#readme",
+  "bugs": {
+    "url": "https://github.com/millionco/tweaker/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/millionco/tweaker.git"
+  },
+  "scripts": {
+    "dev": "pnpm --filter tweaker run dev",
+    "build": "pnpm --filter tweaker run build",
+    "test": "pnpm --filter tweaker run test",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "typecheck": "pnpm --filter tweaker run typecheck",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "pnpm build && changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.0",
+    "oxfmt": "^0.32.0",
+    "oxlint": "^1.47.0",
+    "tsdown": "^0.20.3",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
+  },
+  "packageManager": "pnpm@10.29.1"
+}

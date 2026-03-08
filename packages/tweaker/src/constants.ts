@@ -1,0 +1,5 @@
+export const SLIDER_MAX = 10;
+export const BAR_WIDTH_PX = 3;
+export const TEXT_PREVIEW_MAX_LENGTH = 30;
+export const TYPING_RESET_DELAY_MS = 1500;
+export const SHADE_KEYS = ["50", "100", "200", "300", "400", "500", "600", "700", "800", "900", "950"];
