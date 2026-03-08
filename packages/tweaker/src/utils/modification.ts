@@ -22,8 +22,10 @@ export const applyModification = (
   modification.element.style.paddingTop = `${Math.max(0, paddingY)}px`;
   modification.element.style.paddingBottom = `${Math.max(0, paddingY)}px`;
 
-  modification.element.style.marginTop = paddingY < 0 ? `${paddingY}px` : modification.originalInlineMarginTop;
-  modification.element.style.marginBottom = paddingY < 0 ? `${paddingY}px` : modification.originalInlineMarginBottom;
+  modification.element.style.marginTop =
+    paddingY < 0 ? `${paddingY}px` : modification.originalInlineMarginTop;
+  modification.element.style.marginBottom =
+    paddingY < 0 ? `${paddingY}px` : modification.originalInlineMarginBottom;
 
   if (modification.translateX !== 0 || modification.translateY !== 0) {
     modification.element.style.transform = `translate(${modification.translateX}px, ${modification.translateY}px)`;
@@ -47,5 +49,4 @@ export const restoreModification = (modification: Modification) => {
 export const roundToStep = (value: number): number =>
   parseFloat((Math.round(value * 10) / 10).toFixed(1));
 
-export const roundToHalf = (value: number): number =>
-  Math.round(value * 2) / 2;
+export const roundToHalf = (value: number): number => Math.round(value * 2) / 2;

@@ -1,5 +1,5 @@
 import type { GrayScale, Modification } from "../types";
-import type { RepositionContext, TreeNode } from "./nearby";
+import type { RepositionContext, ParentLayoutInfo } from "./nearby";
 import { formatOklch, getColorAtPosition, getClosestShadeLabel } from "./color";
 
 const describeModification = (modification: Modification): string => {
@@ -9,87 +9,180 @@ const describeModification = (modification: Modification): string => {
   return nameParts.join(" ");
 };
 
-const describeTreeNode = (node: TreeNode): string => {
-  const parts: string[] = [];
-  if (node.componentName) parts.push(`<${node.componentName}>`);
-  parts.push(node.selector);
-  if (node.textPreview && node.children.length === 0) {
-    parts.push(`("${node.textPreview}")`);
+const formatParentLayout = (layout: ParentLayoutInfo): string => {
+  const parts = [layout.display];
+  if (layout.flexDirection) {
+    parts.push(layout.flowAxis === "horizontal" ? "row" : "column");
   }
-  return parts.join(" ");
+  if (layout.gap > 0) {
+    parts.push(`gap: ${layout.gap}px`);
+  }
+  return parts.join(", ");
 };
 
-const formatTreeNode = (node: TreeNode, indent: number, newPositionY: number): string[] => {
-  const prefix = "    " + "  ".repeat(indent);
-  const description = describeTreeNode(node);
-  const marker = node.isSelf ? "★ " : "";
-  const dragSuffix = node.isSelf ? ` → DRAGGED TO Y=${newPositionY}` : "";
+const formatGapComparison = (
+  targetGap: number,
+  parentGap: number,
+  direction: string,
+): string | null => {
+  if (parentGap <= 0) return null;
+  const difference = targetGap - parentGap;
+  if (Math.abs(difference) < 1) return null;
 
-  const lines: string[] = [];
-  lines.push(`${prefix}${marker}${description} — Y=${node.positionY}${dragSuffix}`);
+  const marginProperty =
+    direction === "above"
+      ? "margin-top"
+      : direction === "below"
+        ? "margin-bottom"
+        : direction === "left"
+          ? "margin-left"
+          : "margin-right";
 
-  for (const child of node.children) {
-    lines.push(...formatTreeNode(child, indent + 1, newPositionY));
+  if (difference > 0) {
+    return `The ${targetGap}px gap ${direction} exceeds the parent gap (${parentGap}px) by ${difference}px — add ${marginProperty}: ${difference}px.`;
   }
-
-  return lines;
+  return `The ${targetGap}px gap ${direction} is ${Math.abs(difference)}px less than the parent gap (${parentGap}px) — add ${marginProperty}: ${difference}px.`;
 };
 
-const findInsertionParent = (node: TreeNode, newY: number): TreeNode | null => {
-  for (const child of node.children) {
-    if (child.children.length > 0) {
-      const deeper = findInsertionParent(child, newY);
-      if (deeper) return deeper;
-    }
-  }
-  if (node.children.length > 0 && newY >= node.positionY && newY <= node.positionY + node.height) {
-    return node;
-  }
-  return null;
-};
-
-const computeSpacingLines = (
-  tree: TreeNode,
-  newY: number,
-  elementHeight: number,
+const formatRepositionInstruction = (
+  modification: Modification,
+  context: RepositionContext,
 ): string[] => {
+  const description = describeModification(modification);
   const lines: string[] = [];
-  const parent = findInsertionParent(tree, newY);
-  if (!parent) return lines;
 
-  const siblings = parent.children.filter((child) => !child.isSelf);
+  lines.push(`- ${description}`);
+  if (modification.sourceFile) lines.push(`  Source: ${modification.sourceFile}`);
 
-  let prevSibling: TreeNode | null = null;
-  let nextSibling: TreeNode | null = null;
-  for (let index = 0; index < siblings.length; index++) {
-    if (newY < siblings[index].positionY) {
-      nextSibling = siblings[index];
-      break;
-    }
-    prevSibling = siblings[index];
+  const parentDescription = context.tree.selector;
+  const parentComponentName = context.tree.componentName;
+  const parentLabel = parentComponentName
+    ? `<${parentComponentName}> ${parentDescription}`
+    : parentDescription;
+  lines.push(`  Parent: ${parentLabel} (${formatParentLayout(context.parentLayout)})`);
+
+  const fromIndex = context.originalChildIndex + 1;
+  const toIndex = context.insertionIndex + 1;
+  const totalChildren = context.siblingCount + 1;
+  const didIndexChange = context.originalChildIndex !== context.insertionIndex;
+
+  if (didIndexChange) {
+    lines.push(`  Move from child #${fromIndex} to child #${toIndex} (of ${totalChildren})`);
+  } else {
+    lines.push(`  Stays at child #${fromIndex} (of ${totalChildren}) — adjust spacing only`);
   }
 
   lines.push("");
-  lines.push("  Spacing at target position:");
-  lines.push(`    Element height: ${elementHeight}px`);
 
-  if (prevSibling) {
-    const prevBottom = prevSibling.positionY + prevSibling.height;
-    const gap = newY - prevBottom;
-    lines.push(`    Gap above: ${gap}px (from ${describeTreeNode(prevSibling)} bottom at Y=${prevBottom})`);
+  const isHorizontal = context.parentLayout.flowAxis === "horizontal";
+
+  if (isHorizontal) {
+    lines.push("  Neighbors at target position:");
+    if (context.previousSibling) {
+      lines.push(`    Left:  ${context.previousSibling.description} — ${context.gapLeft}px gap`);
+    }
+    if (context.nextSibling) {
+      lines.push(`    Right: ${context.nextSibling.description} — ${context.gapRight}px gap`);
+    }
   } else {
-    const gap = newY - parent.positionY;
-    lines.push(`    Gap above: ${gap}px (from parent ${describeTreeNode(parent)} top at Y=${parent.positionY})`);
+    lines.push("  Neighbors at target position:");
+    if (context.previousSibling) {
+      lines.push(`    Above: ${context.previousSibling.description} — ${context.gapAbove}px gap`);
+    }
+    if (context.nextSibling) {
+      lines.push(`    Below: ${context.nextSibling.description} — ${context.gapBelow}px gap`);
+    }
   }
 
-  if (nextSibling) {
-    const elementBottom = newY + elementHeight;
-    const gap = nextSibling.positionY - elementBottom;
-    lines.push(`    Gap below: ${gap}px (to ${describeTreeNode(nextSibling)} top at Y=${nextSibling.positionY})`);
+  if (!context.previousSibling && !context.nextSibling) {
+    lines.push("    (no siblings)");
   }
 
-  if (parent.layout) {
-    lines.push(`    Parent layout: ${parent.layout}`);
+  lines.push("");
+
+  const margin = context.existingMargin;
+  if (isHorizontal) {
+    lines.push(`  Current element margins: left=${margin.left}px, right=${margin.right}px`);
+  } else {
+    lines.push(`  Current element margins: top=${margin.top}px, bottom=${margin.bottom}px`);
+  }
+
+  lines.push("");
+
+  const instructions: string[] = [];
+
+  if (didIndexChange) {
+    instructions.push(`Re-order this element in the JSX to be child #${toIndex} of its parent.`);
+  }
+
+  const parentGap = context.parentLayout.gap;
+
+  if (isHorizontal) {
+    const leftComparison = context.previousSibling
+      ? formatGapComparison(context.gapLeft, parentGap, "left")
+      : null;
+    const rightComparison = context.nextSibling
+      ? formatGapComparison(context.gapRight, parentGap, "right")
+      : null;
+
+    if (leftComparison) instructions.push(leftComparison);
+    if (rightComparison) instructions.push(rightComparison);
+
+    if (!leftComparison && !rightComparison && parentGap > 0) {
+      instructions.push(
+        `The gaps match the parent's gap (${parentGap}px) — no extra margins needed.`,
+      );
+    }
+
+    if (parentGap <= 0 && (context.gapLeft !== 0 || context.gapRight !== 0)) {
+      if (context.previousSibling && context.gapLeft !== 0) {
+        instructions.push(
+          `Set margin-left: ${context.gapLeft}px for the ${context.gapLeft}px gap to the left.`,
+        );
+      }
+      if (context.nextSibling && context.gapRight !== 0) {
+        instructions.push(
+          `Set margin-right: ${context.gapRight}px for the ${context.gapRight}px gap to the right.`,
+        );
+      }
+    }
+  } else {
+    const aboveComparison = context.previousSibling
+      ? formatGapComparison(context.gapAbove, parentGap, "above")
+      : null;
+    const belowComparison = context.nextSibling
+      ? formatGapComparison(context.gapBelow, parentGap, "below")
+      : null;
+
+    if (aboveComparison) instructions.push(aboveComparison);
+    if (belowComparison) instructions.push(belowComparison);
+
+    if (!aboveComparison && !belowComparison && parentGap > 0) {
+      instructions.push(
+        `The gaps match the parent's gap (${parentGap}px) — no extra margins needed.`,
+      );
+    }
+
+    if (parentGap <= 0 && (context.gapAbove !== 0 || context.gapBelow !== 0)) {
+      if (context.previousSibling && context.gapAbove !== 0) {
+        instructions.push(
+          `Set margin-top: ${context.gapAbove}px for the ${context.gapAbove}px gap above.`,
+        );
+      }
+      if (context.nextSibling && context.gapBelow !== 0) {
+        instructions.push(
+          `Set margin-bottom: ${context.gapBelow}px for the ${context.gapBelow}px gap below.`,
+        );
+      }
+    }
+  }
+
+  if (instructions.length === 0 && !didIndexChange) {
+    instructions.push("No spacing changes needed.");
+  }
+
+  for (const instruction of instructions) {
+    lines.push(`  → ${instruction}`);
   }
 
   return lines;
@@ -120,26 +213,22 @@ export const generatePrompt = (
         : modification.property === "text"
           ? "text color"
           : "border color";
-    colorLines.push(`- ${property} of ${description} → ${scaleName} ${shade} (${formatOklch(oklch)})`);
+    colorLines.push(
+      `- ${property} of ${description} → ${scaleName} ${shade} (${formatOklch(oklch)})`,
+    );
     if (modification.sourceFile) colorLines.push(`  Source: ${modification.sourceFile}`);
 
     sizeLines.push(`- font-size of ${description} → ${modification.fontSize}px`);
     if (modification.sourceFile) sizeLines.push(`  Source: ${modification.sourceFile}`);
 
-    paddingLines.push(`- vertical padding of ${description} → ${Math.round(modification.paddingY)}px`);
+    paddingLines.push(
+      `- vertical padding of ${description} → ${Math.round(modification.paddingY)}px`,
+    );
     if (modification.sourceFile) paddingLines.push(`  Source: ${modification.sourceFile}`);
 
     const context = repositionContexts?.get(index);
     if (context && (modification.translateX !== 0 || modification.translateY !== 0)) {
-      positionLines.push(`- ${description}`);
-      if (modification.sourceFile) positionLines.push(`  Source: ${modification.sourceFile}`);
-      positionLines.push(`  Dragged from Y=${context.originalPositionY} to Y=${context.newPositionY} (offset: ${context.translateX}px horizontal, ${context.translateY}px vertical)`);
-      positionLines.push("");
-      positionLines.push(`  Page structure (Y = absolute position from document top):`);
-      positionLines.push(...formatTreeNode(context.tree, 0, context.newPositionY));
-      positionLines.push(...computeSpacingLines(context.tree, context.newPositionY, context.elementHeight));
-      positionLines.push("");
-      positionLines.push(`  → Move this element to its new position in the JSX and adjust margin/padding to match the target spacing. Do NOT use CSS transforms.`);
+      positionLines.push(...formatRepositionInstruction(modification, context));
     }
   });
 
@@ -166,7 +255,7 @@ export const generatePrompt = (
   if (positionLines.length > 0) {
     if (sections.length > 0) sections.push("");
     sections.push(
-      "Reposition the following element in the source code (do NOT use CSS transforms — re-order the JSX):",
+      "Reposition the following element (do NOT use CSS transforms — re-order the JSX and adjust spacing):",
       "",
       ...positionLines,
     );

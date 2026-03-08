@@ -1,7 +1,19 @@
 export const SLIDER_MAX = 10;
 export const TEXT_PREVIEW_MAX_LENGTH = 30;
 export const TYPING_RESET_DELAY_MS = 1500;
-export const SHADE_KEYS = ["50", "100", "200", "300", "400", "500", "600", "700", "800", "900", "950"];
+export const SHADE_KEYS = [
+  "50",
+  "100",
+  "200",
+  "300",
+  "400",
+  "500",
+  "600",
+  "700",
+  "800",
+  "900",
+  "950",
+];
 export const FONT_SIZE_MIN_PX = 1;
 export const FONT_SIZE_MAX_PX = 200;
 export const PADDING_MIN_PX = -200;
