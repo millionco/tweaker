@@ -2,12 +2,12 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import type { Modification, TweakerProps } from "./types";
 import { GRAY_SCALES } from "./gray-scales";
-import { SLIDER_MAX, TYPING_RESET_DELAY_MS, FONT_SIZE_MIN_PX, FONT_SIZE_MAX_PX, PADDING_MIN_PX, PADDING_MAX_PX, MOUSE_COLOR_SENSITIVITY, MOUSE_SIZE_SENSITIVITY, MOUSE_PADDING_SENSITIVITY, MINIMAP_WIDTH_PX, MINIMAP_HEIGHT_PX, THUMB_SIZE_PX } from "./constants";
+import { SLIDER_MAX, TYPING_RESET_DELAY_MS, FONT_SIZE_MIN_PX, FONT_SIZE_MAX_PX, PADDING_MIN_PX, PADDING_MAX_PX, MOUSE_COLOR_SENSITIVITY, MOUSE_SIZE_SENSITIVITY, MOUSE_PADDING_SENSITIVITY, MINIMAP_WIDTH_PX, MINIMAP_HEIGHT_PX, THUMB_SIZE_PX, DRAG_SNAP_GRID_PX } from "./constants";
 import { getColorAtPosition, oklchToCssString, parseRgb, rgbToOklch, findClosestPosition } from "./utils/color";
 import { getSelector, getTextPreview } from "./utils/dom";
 import { applyModification, restoreModification, roundToStep, roundToHalf } from "./utils/modification";
 import { generatePrompt } from "./utils/prompt";
-import { gatherRepositionContext } from "./utils/nearby";
+import { gatherRepositionContext, snapToGrid } from "./utils/nearby";
 import type { RepositionContext } from "./utils/nearby";
 
 const requestLock = () => {
@@ -90,10 +90,12 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
         const current = updated[index];
 
         if (event.ctrlKey) {
+          const rawX = current.translateX + event.movementX;
+          const rawY = current.translateY + event.movementY;
           updated[index] = {
             ...current,
-            translateX: current.translateX + event.movementX,
-            translateY: current.translateY + event.movementY,
+            translateX: snapToGrid(rawX, DRAG_SNAP_GRID_PX),
+            translateY: snapToGrid(rawY, DRAG_SNAP_GRID_PX),
           };
         } else if (event.shiftKey) {
           const newPaddingY = Math.max(PADDING_MIN_PX, Math.min(PADDING_MAX_PX, current.paddingY - event.movementY * MOUSE_PADDING_SENSITIVITY));
