@@ -1,4 +1,4 @@
-import { DOM_TREE_MAX_NODES, TEXT_PREVIEW_MAX_LENGTH } from "../constants";
+import { DOM_TREE_MAX_NODES } from "../constants";
 import { getSelector, getTextPreview } from "./dom";
 
 export interface SpacingInfo {
@@ -51,13 +51,17 @@ const getComponentName = (element: HTMLElement): string | null => {
   );
   if (!fiberKey) return null;
 
-  let fiber = (element as unknown as Record<string, unknown>)[fiberKey] as Record<string, unknown> | null;
+  let fiber = (element as unknown as Record<string, unknown>)[fiberKey] as Record<
+    string,
+    unknown
+  > | null;
   while (fiber) {
     const fiberType = fiber.type;
     if (typeof fiberType === "function" && typeof fiberType === "function") {
-      const name = (fiberType as { displayName?: string; name?: string }).displayName
-        ?? (fiberType as { name?: string }).name
-        ?? null;
+      const name =
+        (fiberType as { displayName?: string; name?: string }).displayName ??
+        (fiberType as { name?: string }).name ??
+        null;
       if (name && /^[A-Z]/.test(name)) return name;
     }
     fiber = fiber.return as Record<string, unknown> | null;
@@ -92,7 +96,9 @@ const detectSpacing = (parent: HTMLElement, children: HTMLElement[]): SpacingInf
 
   if (layout === "flex-column" || layout === "flex-row" || layout === "grid") {
     const gapProperty = isVertical ? "rowGap" : "columnGap";
-    const gapValue = parsePixelValue(parentComputed.getPropertyValue(gapProperty === "rowGap" ? "row-gap" : "column-gap"));
+    const gapValue = parsePixelValue(
+      parentComputed.getPropertyValue(gapProperty === "rowGap" ? "row-gap" : "column-gap"),
+    );
     const generalGap = parsePixelValue(parentComputed.gap);
     const effectiveGap = gapValue || generalGap;
 
@@ -223,9 +229,8 @@ const buildTreeNode = (
   }
 
   const visibleChildren = getVisibleChildren(element);
-  const spacingMechanism = visibleChildren.length >= 2
-    ? detectSpacing(element, visibleChildren)
-    : null;
+  const spacingMechanism =
+    visibleChildren.length >= 2 ? detectSpacing(element, visibleChildren) : null;
 
   return {
     selector: getSelector(element),
@@ -305,11 +310,7 @@ export const gatherRepositionContext = (
     return { top, bottom, centerY };
   });
 
-  const targetChildIndex = computeTargetChildIndex(
-    siblingRects,
-    originalChildIndex,
-    newPositionY,
-  );
+  const targetChildIndex = computeTargetChildIndex(siblingRects, originalChildIndex, newPositionY);
 
   const siblingIndicesWithoutSelf = visibleChildren
     .map((child, index) => ({ child, index }))

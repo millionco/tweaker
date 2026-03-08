@@ -40,18 +40,24 @@ const formatSpacingLabel = (spacing: SpacingInfo | null): string => {
   return "no consistent spacing";
 };
 
-const formatTreeNode = (node: TreeNode, indent: number, selfTargetIndex: number | null): string[] => {
+const formatTreeNode = (
+  node: TreeNode,
+  indent: number,
+  selfTargetIndex: number | null,
+): string[] => {
   const prefix = "    " + "  ".repeat(indent);
   const description = describeTreeNode(node);
   const marker = node.isSelf ? "★ " : "";
 
-  const layoutSuffix = node.children.length > 0 && node.layout
-    ? ` [${formatLayoutLabel(node.layout)}${node.spacingMechanism ? `, ${formatSpacingLabel(node.spacingMechanism)}` : ""}]`
-    : "";
+  const layoutSuffix =
+    node.children.length > 0 && node.layout
+      ? ` [${formatLayoutLabel(node.layout)}${node.spacingMechanism ? `, ${formatSpacingLabel(node.spacingMechanism)}` : ""}]`
+      : "";
 
-  const indexLabel = selfTargetIndex !== null && node.isSelf
-    ? ` — MOVE TO child ${selfTargetIndex}`
-    : ` — child ${node.childIndex}`;
+  const indexLabel =
+    selfTargetIndex !== null && node.isSelf
+      ? ` — MOVE TO child ${selfTargetIndex}`
+      : ` — child ${node.childIndex}`;
 
   const lines: string[] = [];
   lines.push(`${prefix}${marker}${description}${indexLabel}${layoutSuffix}`);
@@ -69,7 +75,9 @@ const formatRelationalPosition = (context: RepositionContext, description: strin
   lines.push(`- ${description}`);
 
   lines.push(`  Relational position:`);
-  lines.push(`    Move from child ${context.originalChildIndex} → child ${context.targetChildIndex} inside ${context.parentSelector}`);
+  lines.push(
+    `    Move from child ${context.originalChildIndex} → child ${context.targetChildIndex} inside ${context.parentSelector}`,
+  );
 
   if (context.previousSibling) {
     lines.push(`    Place after: ${describeSibling(context.previousSibling)}`);
@@ -95,31 +103,49 @@ const formatSpacingInstruction = (context: RepositionContext): string[] => {
   if (spacing && spacing.method === "gap") {
     lines.push(`  Parent spacing: ${spacing.cssProperty}: ${spacing.value}px`);
     if (context.targetGapAbove === spacing.value && context.targetGapBelow === spacing.value) {
-      lines.push(`  → Reorder the JSX only. The parent's ${spacing.cssProperty} property handles spacing automatically.`);
+      lines.push(
+        `  → Reorder the JSX only. The parent's ${spacing.cssProperty} property handles spacing automatically.`,
+      );
     } else {
-      lines.push(`  → Reorder the JSX. Parent uses ${spacing.cssProperty}: ${spacing.value}px for base spacing.`);
+      lines.push(
+        `  → Reorder the JSX. Parent uses ${spacing.cssProperty}: ${spacing.value}px for base spacing.`,
+      );
       if (context.targetGapAbove !== spacing.value) {
         const extraMargin = context.targetGapAbove - spacing.value;
         if (extraMargin > 0) {
-          lines.push(`  → Add margin-top: ${extraMargin}px to achieve ${context.targetGapAbove}px total gap above.`);
+          lines.push(
+            `  → Add margin-top: ${extraMargin}px to achieve ${context.targetGapAbove}px total gap above.`,
+          );
         } else if (context.targetGapAbove >= 0 && context.targetGapAbove < spacing.value) {
-          lines.push(`  → Add margin-top: ${extraMargin}px (negative) to reduce gap above to ${context.targetGapAbove}px.`);
+          lines.push(
+            `  → Add margin-top: ${extraMargin}px (negative) to reduce gap above to ${context.targetGapAbove}px.`,
+          );
         }
       }
     }
   } else if (spacing && spacing.method === "margin") {
-    lines.push(`  Sibling spacing: ${spacing.cssProperty}: ${spacing.value}px${spacing.isUniform ? " (uniform)" : " (varies)"}`);
+    lines.push(
+      `  Sibling spacing: ${spacing.cssProperty}: ${spacing.value}px${spacing.isUniform ? " (uniform)" : " (varies)"}`,
+    );
     if (spacing.isUniform && context.targetGapAbove === spacing.value) {
-      lines.push(`  → Reorder the JSX. Existing ${spacing.cssProperty}: ${spacing.value}px on siblings provides correct spacing.`);
+      lines.push(
+        `  → Reorder the JSX. Existing ${spacing.cssProperty}: ${spacing.value}px on siblings provides correct spacing.`,
+      );
     } else {
-      lines.push(`  → Reorder the JSX and set margin-top: ${Math.max(0, context.targetGapAbove)}px on this element for the ${context.targetGapAbove}px gap above.`);
+      lines.push(
+        `  → Reorder the JSX and set margin-top: ${Math.max(0, context.targetGapAbove)}px on this element for the ${context.targetGapAbove}px gap above.`,
+      );
       if (context.nextSibling && context.targetGapBelow >= 0) {
-        lines.push(`  → Set margin-bottom: ${context.targetGapBelow}px for the ${context.targetGapBelow}px gap below.`);
+        lines.push(
+          `  → Set margin-bottom: ${context.targetGapBelow}px for the ${context.targetGapBelow}px gap below.`,
+        );
       }
     }
   } else {
     lines.push(`  No consistent spacing mechanism detected.`);
-    lines.push(`  → Reorder the JSX and set margin-top: ${Math.max(0, context.targetGapAbove)}px for the gap above.`);
+    lines.push(
+      `  → Reorder the JSX and set margin-top: ${Math.max(0, context.targetGapAbove)}px for the gap above.`,
+    );
     if (context.nextSibling && context.targetGapBelow >= 0) {
       lines.push(`  → Set margin-bottom: ${context.targetGapBelow}px for the gap below.`);
     }
@@ -153,13 +179,17 @@ export const generatePrompt = (
         : modification.property === "text"
           ? "text color"
           : "border color";
-    colorLines.push(`- ${property} of ${description} → ${scaleName} ${shade} (${formatOklch(oklch)})`);
+    colorLines.push(
+      `- ${property} of ${description} → ${scaleName} ${shade} (${formatOklch(oklch)})`,
+    );
     if (modification.sourceFile) colorLines.push(`  Source: ${modification.sourceFile}`);
 
     sizeLines.push(`- font-size of ${description} → ${modification.fontSize}px`);
     if (modification.sourceFile) sizeLines.push(`  Source: ${modification.sourceFile}`);
 
-    paddingLines.push(`- vertical padding of ${description} → ${Math.round(modification.paddingY)}px`);
+    paddingLines.push(
+      `- vertical padding of ${description} → ${Math.round(modification.paddingY)}px`,
+    );
     if (modification.sourceFile) paddingLines.push(`  Source: ${modification.sourceFile}`);
 
     const context = repositionContexts?.get(index);
@@ -177,7 +207,9 @@ export const generatePrompt = (
       positionLines.push(`  Page structure:`);
       positionLines.push(...formatTreeNode(context.tree, 0, context.targetChildIndex));
       positionLines.push("");
-      positionLines.push(`  Do NOT use CSS transforms. Re-order the JSX and adjust margin/padding as described above.`);
+      positionLines.push(
+        `  Do NOT use CSS transforms. Re-order the JSX and adjust margin/padding as described above.`,
+      );
     }
   });
 
@@ -203,11 +235,7 @@ export const generatePrompt = (
 
   if (positionLines.length > 0) {
     if (sections.length > 0) sections.push("");
-    sections.push(
-      "Reposition the following element in the source code:",
-      "",
-      ...positionLines,
-    );
+    sections.push("Reposition the following element in the source code:", "", ...positionLines);
   }
 
   return sections.join("\n");

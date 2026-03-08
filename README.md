@@ -51,15 +51,15 @@ const customScales: Record<string, GrayScale> = {
 
 ## Keybinds
 
-| Key | Action |
-| --- | --- |
-| `T` | Enter picking mode |
-| `B` | Switch to background color |
-| `F` | Switch to text (foreground) color |
-| `D` | Switch to border color |
-| `Space` | Persist current change, copy prompt, pick next element |
-| `Escape` | Copy prompt, restore all changes, and exit |
-| `0-9` / `.` | Type a value directly (0–10 scale) |
+| Key         | Action                                                 |
+| ----------- | ------------------------------------------------------ |
+| `T`         | Enter picking mode                                     |
+| `B`         | Switch to background color                             |
+| `F`         | Switch to text (foreground) color                      |
+| `D`         | Switch to border color                                 |
+| `Space`     | Persist current change, copy prompt, pick next element |
+| `Escape`    | Copy prompt, restore all changes, and exit             |
+| `0-9` / `.` | Type a value directly (0–10 scale)                     |
 
 ## Workflow
 

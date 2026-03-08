@@ -3,11 +3,11 @@
   "version": "0.9.2",
   "description": "A dev tool for tweaking colors along gray scales in React apps",
   "keywords": [
-    "react",
-    "dev-tools",
     "color",
+    "design-system",
+    "dev-tools",
     "gray-scale",
-    "design-system"
+    "react"
   ],
   "homepage": "https://github.com/millionco/tweaker#readme",
   "bugs": {
@@ -38,13 +38,13 @@
   "dependencies": {
     "motion": "^12.0.0"
   },
-  "peerDependencies": {
-    "react": ">=18",
-    "react-dom": ">=18"
-  },
   "devDependencies": {
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "tsdown": "^0.20.3"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
   }
 }
