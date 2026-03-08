@@ -8,8 +8,6 @@ import { getSelector, getTextPreview } from "./utils/dom";
 import { applyModification, restoreModification, roundToStep, roundToHalf } from "./utils/modification";
 import { generatePrompt } from "./utils/prompt";
 
-type ScrollMode = "style" | "padding";
-
 const requestLock = () => {
   if (!document.pointerLockElement) {
     document.body.requestPointerLock();
@@ -27,7 +25,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
   const [modifications, setModifications] = useState<Modification[]>([]);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [inputValue, setInputValue] = useState("");
-  const [scrollMode, setScrollMode] = useState<ScrollMode>("style");
+  const [shiftHeld, setShiftHeld] = useState(false);
   const typingBuffer = useRef("");
   const typingTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -38,12 +36,10 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
   const activeScaleRef = useRef(activeScale);
   const modificationsRef = useRef(modifications);
   const scalesRef = useRef(scales);
-  const scrollModeRef = useRef(scrollMode);
   activeIndexRef.current = activeIndex;
   activeScaleRef.current = activeScale;
   modificationsRef.current = modifications;
   scalesRef.current = scales;
-  scrollModeRef.current = scrollMode;
 
   const updateActivePosition = useCallback(
     (newPosition: number) => {
@@ -59,6 +55,18 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
   );
 
   useEffect(() => {
+    const handleShift = (event: KeyboardEvent) => {
+      setShiftHeld(event.shiftKey);
+    };
+    document.addEventListener("keydown", handleShift);
+    document.addEventListener("keyup", handleShift);
+    return () => {
+      document.removeEventListener("keydown", handleShift);
+      document.removeEventListener("keyup", handleShift);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!hasModifications || picking) return;
 
     const handleMouseMove = (event: MouseEvent) => {
@@ -66,11 +74,13 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
       const index = activeIndexRef.current;
       if (index < 0) return;
 
+      const isPadding = event.shiftKey;
+
       setModifications((previous) => {
         const updated = [...previous];
         const current = updated[index];
 
-        if (scrollModeRef.current === "padding") {
+        if (isPadding) {
           const newPaddingY = Math.max(PADDING_MIN_PX, Math.min(PADDING_MAX_PX, current.paddingY - event.movementY * MOUSE_PADDING_SENSITIVITY));
           const newPaddingX = Math.max(PADDING_MIN_PX, Math.min(PADDING_MAX_PX, current.paddingX + event.movementX * MOUSE_PADDING_SENSITIVITY));
           updated[index] = { ...current, paddingY: Math.round(newPaddingY), paddingX: Math.round(newPaddingX) };
@@ -191,10 +201,6 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
         event.preventDefault();
         setPicking(true);
       }
-      if (event.key === "p") {
-        event.preventDefault();
-        setScrollMode((previous) => (previous === "style" ? "padding" : "style"));
-      }
       if (hasModifications && (event.key === "b" || event.key === "f" || event.key === "d")) {
         event.preventDefault();
         const property: "bg" | "text" | "border" =
@@ -303,6 +309,10 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
         originalInlinePaddingBottom: target.style.paddingBottom,
         originalInlinePaddingLeft: target.style.paddingLeft,
         originalInlinePaddingRight: target.style.paddingRight,
+        originalInlineMarginTop: target.style.marginTop,
+        originalInlineMarginBottom: target.style.marginBottom,
+        originalInlineMarginLeft: target.style.marginLeft,
+        originalInlineMarginRight: target.style.marginRight,
         property: defaultProperty,
         position,
         fontSize: currentSize,
@@ -338,13 +348,15 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
   const propertyLabel =
     activeMod?.property === "text" ? "F" : activeMod?.property === "border" ? "D" : "B";
 
+  const isPaddingMode = shiftHeld && hasModifications && !picking;
+
   const thumbX = activeMod
-    ? scrollMode === "padding"
+    ? isPaddingMode
       ? ((activeMod.paddingX - PADDING_MIN_PX) / (PADDING_MAX_PX - PADDING_MIN_PX)) * (MINIMAP_WIDTH_PX - THUMB_SIZE_PX)
       : ((activeMod.fontSize - FONT_SIZE_MIN_PX) / (FONT_SIZE_MAX_PX - FONT_SIZE_MIN_PX)) * (MINIMAP_WIDTH_PX - THUMB_SIZE_PX)
     : 0;
   const thumbY = activeMod
-    ? scrollMode === "padding"
+    ? isPaddingMode
       ? (1 - (activeMod.paddingY - PADDING_MIN_PX) / (PADDING_MAX_PX - PADDING_MIN_PX)) * (MINIMAP_HEIGHT_PX - THUMB_SIZE_PX)
       : (1 - activeMod.position / SLIDER_MAX) * (MINIMAP_HEIGHT_PX - THUMB_SIZE_PX)
     : MINIMAP_HEIGHT_PX - THUMB_SIZE_PX;
@@ -377,39 +389,22 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
               }}
             />
           </div>
-          <div style={segmentContainerStyle}>
-            <button
-              type="button"
-              style={{
-                ...segmentButtonStyle,
-                ...(scrollMode === "style" ? segmentActiveStyle : {}),
-              }}
-              onClick={() => setScrollMode("style")}
-            >
-              Style
-            </button>
-            <button
-              type="button"
-              style={{
-                ...segmentButtonStyle,
-                ...(scrollMode === "padding" ? segmentActiveStyle : {}),
-              }}
-              onClick={() => setScrollMode("padding")}
-            >
-              Padding
-            </button>
+          <div style={minimapModeStyle}>
+            <span style={minimapLabelStyle}>
+              {isPaddingMode ? "⇧ Padding" : "Style"}
+            </span>
           </div>
           <div style={minimapValuesStyle}>
             <span style={minimapLabelStyle}>
               {picking
                 ? "Picking…"
-                : scrollMode === "padding"
+                : isPaddingMode
                   ? `Y ${activeMod?.paddingY ?? 0}px`
                   : `${propertyLabel} ${inputValue || "0"}`}
             </span>
             {!picking && activeMod && (
               <span style={minimapLabelStyle}>
-                {scrollMode === "padding"
+                {isPaddingMode
                   ? `X ${activeMod.paddingX}px`
                   : `${activeMod.fontSize}px`}
               </span>
@@ -452,32 +447,9 @@ const minimapFieldStyle: React.CSSProperties = {
   pointerEvents: "none",
 };
 
-const segmentContainerStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 2,
-  background: "rgba(0,0,0,0.25)",
-  backdropFilter: "blur(12px)",
-  WebkitBackdropFilter: "blur(12px)",
-  borderRadius: 6,
-  padding: 2,
-};
-
-const segmentButtonStyle: React.CSSProperties = {
-  ...baseTextStyle,
-  flex: 1,
-  fontSize: 10,
-  padding: "3px 0",
-  border: "none",
-  borderRadius: 4,
-  background: "transparent",
-  color: "rgba(255,255,255,0.4)",
-  cursor: "pointer",
-  transition: "all 100ms",
-};
-
-const segmentActiveStyle: React.CSSProperties = {
-  background: "rgba(255,255,255,0.12)",
-  color: "rgba(255,255,255,0.85)",
+const minimapModeStyle: React.CSSProperties = {
+  padding: "0 2px",
+  pointerEvents: "none",
 };
 
 const minimapValuesStyle: React.CSSProperties = {

@@ -19,6 +19,10 @@ export interface Modification {
   originalInlinePaddingBottom: string;
   originalInlinePaddingLeft: string;
   originalInlinePaddingRight: string;
+  originalInlineMarginTop: string;
+  originalInlineMarginBottom: string;
+  originalInlineMarginLeft: string;
+  originalInlineMarginRight: string;
   property: "bg" | "text" | "border";
   position: number;
   fontSize: number;
