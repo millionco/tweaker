@@ -14,10 +14,16 @@ export interface Modification {
   originalInlineBg: string;
   originalInlineColor: string;
   originalInlineBorderColor: string;
-  originalInlineFontWeight: string;
+  originalInlineFontSize: string;
+  originalInlinePaddingTop: string;
+  originalInlinePaddingBottom: string;
+  originalInlinePaddingLeft: string;
+  originalInlinePaddingRight: string;
   property: "bg" | "text" | "border";
   position: number;
-  fontWeight: number;
+  fontSize: number;
+  paddingX: number;
+  paddingY: number;
 }
 
 export interface TweakerProps {
