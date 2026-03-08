@@ -2,13 +2,25 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import type { Modification, TweakerProps } from "./types";
 import { GRAY_SCALES } from "./gray-scales";
-import { SLIDER_MAX, TYPING_RESET_DELAY_MS, FONT_SIZE_MIN_PX, FONT_SIZE_MAX_PX, PADDING_MIN_PX, PADDING_MAX_PX, SCROLL_COLOR_SENSITIVITY, SCROLL_SIZE_SENSITIVITY, SCROLL_PADDING_SENSITIVITY, MINIMAP_WIDTH_PX, MINIMAP_HEIGHT_PX, THUMB_SIZE_PX } from "./constants";
+import { SLIDER_MAX, TYPING_RESET_DELAY_MS, FONT_SIZE_MIN_PX, FONT_SIZE_MAX_PX, PADDING_MIN_PX, PADDING_MAX_PX, MOUSE_COLOR_SENSITIVITY, MOUSE_SIZE_SENSITIVITY, MOUSE_PADDING_SENSITIVITY, MINIMAP_WIDTH_PX, MINIMAP_HEIGHT_PX, THUMB_SIZE_PX } from "./constants";
 import { getColorAtPosition, oklchToCssString, parseRgb, rgbToOklch, findClosestPosition } from "./utils/color";
 import { getSelector, getTextPreview } from "./utils/dom";
 import { applyModification, restoreModification, roundToStep, roundToHalf } from "./utils/modification";
 import { generatePrompt } from "./utils/prompt";
 
 type ScrollMode = "style" | "padding";
+
+const requestLock = () => {
+  if (!document.pointerLockElement) {
+    document.body.requestPointerLock();
+  }
+};
+
+const releaseLock = () => {
+  if (document.pointerLockElement) {
+    document.exitPointerLock();
+  }
+};
 
 export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: TweakerProps) => {
   const [picking, setPicking] = useState(false);
@@ -49,8 +61,8 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
   useEffect(() => {
     if (!hasModifications || picking) return;
 
-    const handleWheel = (event: WheelEvent) => {
-      event.preventDefault();
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!document.pointerLockElement) return;
       const index = activeIndexRef.current;
       if (index < 0) return;
 
@@ -59,12 +71,12 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
         const current = updated[index];
 
         if (scrollModeRef.current === "padding") {
-          const newPaddingY = Math.max(PADDING_MIN_PX, Math.min(PADDING_MAX_PX, current.paddingY - event.deltaY * SCROLL_PADDING_SENSITIVITY));
-          const newPaddingX = Math.max(PADDING_MIN_PX, Math.min(PADDING_MAX_PX, current.paddingX + event.deltaX * SCROLL_PADDING_SENSITIVITY));
+          const newPaddingY = Math.max(PADDING_MIN_PX, Math.min(PADDING_MAX_PX, current.paddingY - event.movementY * MOUSE_PADDING_SENSITIVITY));
+          const newPaddingX = Math.max(PADDING_MIN_PX, Math.min(PADDING_MAX_PX, current.paddingX + event.movementX * MOUSE_PADDING_SENSITIVITY));
           updated[index] = { ...current, paddingY: Math.round(newPaddingY), paddingX: Math.round(newPaddingX) };
         } else {
-          const newPosition = Math.max(0, Math.min(SLIDER_MAX, current.position - event.deltaY * SCROLL_COLOR_SENSITIVITY));
-          const newSize = Math.max(FONT_SIZE_MIN_PX, Math.min(FONT_SIZE_MAX_PX, current.fontSize + event.deltaX * SCROLL_SIZE_SENSITIVITY));
+          const newPosition = Math.max(0, Math.min(SLIDER_MAX, current.position - event.movementY * MOUSE_COLOR_SENSITIVITY));
+          const newSize = Math.max(FONT_SIZE_MIN_PX, Math.min(FONT_SIZE_MAX_PX, current.fontSize + event.movementX * MOUSE_SIZE_SENSITIVITY));
           updated[index] = { ...current, position: roundToStep(newPosition), fontSize: roundToHalf(newSize) };
         }
 
@@ -74,9 +86,11 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
       });
     };
 
-    document.addEventListener("wheel", handleWheel, { passive: false, capture: true });
+    requestLock();
+    document.addEventListener("mousemove", handleMouseMove, true);
     return () => {
-      document.removeEventListener("wheel", handleWheel, true);
+      document.removeEventListener("mousemove", handleMouseMove, true);
+      releaseLock();
     };
   }, [hasModifications, picking]);
 
@@ -86,6 +100,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        releaseLock();
         const prompt = generatePrompt(modificationsRef.current, scalesRef.current, activeScaleRef.current);
         navigator.clipboard.writeText(prompt);
         modificationsRef.current.forEach(restoreModification);
@@ -96,6 +111,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
 
       if (event.key === " ") {
         event.preventDefault();
+        releaseLock();
         const prompt = generatePrompt(modificationsRef.current, scalesRef.current, activeScaleRef.current);
         navigator.clipboard.writeText(prompt);
         setPicking(true);
@@ -214,6 +230,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
   useEffect(() => {
     return () => {
       modifications.forEach(restoreModification);
+      releaseLock();
     };
   }, []);
 
