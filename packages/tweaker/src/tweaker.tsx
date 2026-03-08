@@ -303,8 +303,6 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
     ? (1 - activeMod.position / SLIDER_MAX) * (MINIMAP_HEIGHT_PX - THUMB_SIZE_PX)
     : MINIMAP_HEIGHT_PX - THUMB_SIZE_PX;
 
-  const bgColor900 = scales[activeScale]?.shades["900"] ?? "#1A1A1A";
-
   return (
     <AnimatePresence>
       {(hasModifications || picking) && (
@@ -317,16 +315,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
           transition={{ duration: 0.2 }}
           style={minimapContainerStyle}
         >
-          <div style={{ ...minimapFieldStyle, background: bgColor900 }}>
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                borderRadius: 6,
-                background: `linear-gradient(to right, ${scales[activeScale]?.shades["950"] ?? "#111"}, ${scales[activeScale]?.shades["50"] ?? "#fafafa"})`,
-                opacity: 0.15,
-              }}
-            />
+          <div style={minimapFieldStyle}>
             <div
               style={{
                 position: "absolute",
@@ -384,7 +373,10 @@ const minimapFieldStyle: React.CSSProperties = {
   width: MINIMAP_WIDTH_PX,
   height: MINIMAP_HEIGHT_PX,
   borderRadius: 8,
-  boxShadow: "0 4px 24px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.08) inset",
+  background: "rgba(0,0,0,0.25)",
+  backdropFilter: "blur(12px)",
+  WebkitBackdropFilter: "blur(12px)",
+  boxShadow: "0 0 0 1px rgba(255,255,255,0.08) inset",
   overflow: "hidden",
 };
 
