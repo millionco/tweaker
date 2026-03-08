@@ -1,6 +1,5 @@
 import type { GrayScale, Modification } from "../types";
 import { formatOklch, getColorAtPosition, getClosestShadeLabel } from "./color";
-import { positionToFontWeight } from "./modification";
 
 export const generatePrompt = (
   modifications: Modification[],
@@ -19,21 +18,23 @@ export const generatePrompt = (
     if (modification.textPreview) nameParts.push(`("${modification.textPreview}")`);
     const description = nameParts.join(" ");
 
-    if (modification.property === "weight") {
-      const weight = positionToFontWeight(modification.position);
-      weightLines.push(`- font-weight of ${description} → ${weight}`);
+    const shade = getClosestShadeLabel(modification.position);
+    const oklch = getColorAtPosition(scales, scaleKey, modification.position);
+    const property =
+      modification.property === "bg"
+        ? "background color"
+        : modification.property === "text"
+          ? "text color"
+          : "border color";
+    colorLines.push(`- ${property} of ${description} → ${scaleName} ${shade} (${formatOklch(oklch)})`);
+    if (modification.sourceFile) colorLines.push(`  Source: ${modification.sourceFile}`);
+
+    const originalWeight = modification.originalInlineFontWeight
+      || getComputedStyle(modification.element).fontWeight;
+    const newWeight = Math.round(modification.fontWeight);
+    if (String(newWeight) !== originalWeight) {
+      weightLines.push(`- font-weight of ${description} → ${newWeight}`);
       if (modification.sourceFile) weightLines.push(`  Source: ${modification.sourceFile}`);
-    } else {
-      const shade = getClosestShadeLabel(modification.position);
-      const oklch = getColorAtPosition(scales, scaleKey, modification.position);
-      const property =
-        modification.property === "bg"
-          ? "background color"
-          : modification.property === "text"
-            ? "text color"
-            : "border color";
-      colorLines.push(`- ${property} of ${description} → ${scaleName} ${shade} (${formatOklch(oklch)})`);
-      if (modification.sourceFile) colorLines.push(`  Source: ${modification.sourceFile}`);
     }
   });
 

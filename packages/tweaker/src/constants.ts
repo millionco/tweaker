@@ -5,4 +5,3 @@ export const TYPING_RESET_DELAY_MS = 1500;
 export const SHADE_KEYS = ["50", "100", "200", "300", "400", "500", "600", "700", "800", "900", "950"];
 export const FONT_WEIGHT_MIN = 100;
 export const FONT_WEIGHT_MAX = 900;
-export const FONT_WEIGHT_STEPS = [100, 200, 300, 400, 500, 600, 700, 800, 900];

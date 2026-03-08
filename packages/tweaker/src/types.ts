@@ -15,8 +15,9 @@ export interface Modification {
   originalInlineColor: string;
   originalInlineBorderColor: string;
   originalInlineFontWeight: string;
-  property: "bg" | "text" | "border" | "weight";
+  property: "bg" | "text" | "border";
   position: number;
+  fontWeight: number;
 }
 
 export interface TweakerProps {

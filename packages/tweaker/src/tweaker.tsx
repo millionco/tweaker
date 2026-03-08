@@ -2,11 +2,16 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, useMotionValue, useTransform, AnimatePresence } from "motion/react";
 import type { Modification, TweakerProps } from "./types";
 import { GRAY_SCALES } from "./gray-scales";
-import { SLIDER_MAX, BAR_WIDTH_PX, TYPING_RESET_DELAY_MS } from "./constants";
+import { SLIDER_MAX, BAR_WIDTH_PX, TYPING_RESET_DELAY_MS, FONT_WEIGHT_MIN, FONT_WEIGHT_MAX } from "./constants";
 import { getColorAtPosition, oklchToCssString, parseRgb, rgbToOklch, findClosestPosition } from "./utils/color";
 import { getSelector, getTextPreview } from "./utils/dom";
-import { applyModification, restoreModification, roundToStep, positionToFontWeight } from "./utils/modification";
+import { applyModification, restoreModification, roundToStep } from "./utils/modification";
 import { generatePrompt } from "./utils/prompt";
+
+const xToFontWeight = (clientX: number): number => {
+  const percent = Math.max(0, Math.min(1, clientX / window.innerWidth));
+  return FONT_WEIGHT_MIN + percent * (FONT_WEIGHT_MAX - FONT_WEIGHT_MIN);
+};
 
 export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: TweakerProps) => {
   const [picking, setPicking] = useState(false);
@@ -17,6 +22,8 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
   const typingTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
   const fillPercent = useMotionValue(0);
   const fillHeight = useTransform(fillPercent, (percent) => `${percent}%`);
+  const weightPercent = useMotionValue(0);
+  const weightWidth = useTransform(weightPercent, (percent) => `${percent}%`);
 
   const activeMod = activeIndex >= 0 ? modifications[activeIndex] : null;
   const hasModifications = modifications.length > 0;
@@ -33,8 +40,9 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
   useEffect(() => {
     if (activeMod) {
       fillPercent.jump((activeMod.position / SLIDER_MAX) * 100);
+      weightPercent.jump(((activeMod.fontWeight - FONT_WEIGHT_MIN) / (FONT_WEIGHT_MAX - FONT_WEIGHT_MIN)) * 100);
     }
-  }, [activeMod?.position, fillPercent]);
+  }, [activeMod?.position, activeMod?.fontWeight, fillPercent, weightPercent]);
 
   const updateActivePosition = useCallback(
     (newPosition: number) => {
@@ -52,30 +60,31 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
   useEffect(() => {
     if (!hasModifications || picking) return;
 
-    const updateFromY = (clientY: number) => {
-      const percent = Math.max(0, Math.min(1, 1 - clientY / window.innerHeight));
-      const value = roundToStep(percent * SLIDER_MAX);
+    const handlePointerMove = (event: PointerEvent) => {
+      const colorPercent = Math.max(0, Math.min(1, 1 - event.clientY / window.innerHeight));
+      const colorValue = roundToStep(colorPercent * SLIDER_MAX);
+      const fontWeight = xToFontWeight(event.clientX);
       const index = activeIndexRef.current;
       if (index < 0) return;
-      fillPercent.jump(percent * 100);
+
+      fillPercent.jump(colorPercent * 100);
+      const weightPct = ((fontWeight - FONT_WEIGHT_MIN) / (FONT_WEIGHT_MAX - FONT_WEIGHT_MIN)) * 100;
+      weightPercent.jump(weightPct);
+
       setModifications((previous) => {
         const updated = [...previous];
-        updated[index] = { ...updated[index], position: value };
+        updated[index] = { ...updated[index], position: colorValue, fontWeight };
         applyModification(updated[index], scalesRef.current, activeScaleRef.current);
         return updated;
       });
-      setInputValue(String(value));
-    };
-
-    const handlePointerMove = (event: PointerEvent) => {
-      updateFromY(event.clientY);
+      setInputValue(String(colorValue));
     };
 
     document.addEventListener("pointermove", handlePointerMove, true);
     return () => {
       document.removeEventListener("pointermove", handlePointerMove, true);
     };
-  }, [hasModifications, picking, fillPercent]);
+  }, [hasModifications, picking, fillPercent, weightPercent]);
 
   useEffect(() => {
     if (!hasModifications) return;
@@ -172,10 +181,10 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
         event.preventDefault();
         setPicking(true);
       }
-      if (hasModifications && (event.key === "b" || event.key === "f" || event.key === "d" || event.key === "w")) {
+      if (hasModifications && (event.key === "b" || event.key === "f" || event.key === "d")) {
         event.preventDefault();
-        const property: "bg" | "text" | "border" | "weight" =
-          event.key === "b" ? "bg" : event.key === "f" ? "text" : event.key === "d" ? "border" : "weight";
+        const property: "bg" | "text" | "border" =
+          event.key === "b" ? "bg" : event.key === "f" ? "text" : "border";
         const index = activeIndexRef.current;
         if (index < 0) return;
         setModifications((previous) => {
@@ -202,7 +211,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
     if (activeMod) {
       applyModification(activeMod, scales, activeScale);
     }
-  }, [activeMod?.position, activeScale, scales]);
+  }, [activeMod?.position, activeMod?.fontWeight, activeScale, scales]);
 
   useEffect(() => {
     if (!picking) return;
@@ -249,6 +258,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
             : rgbToOklch(textRed, textGreen, textBlue);
 
       const position = findClosestPosition(scales, activeScale, targetOklch);
+      const currentWeight = parseFloat(computed.fontWeight) || 400;
 
       const newModification: Modification = {
         element: target,
@@ -262,6 +272,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
         originalInlineFontWeight: target.style.fontWeight,
         property: defaultProperty,
         position,
+        fontWeight: currentWeight,
       };
 
       setModifications((previous) => [...previous, newModification]);
@@ -286,50 +297,74 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
   }, [picking, activeScale, scales, modifications.length]);
 
   const fillColor = activeMod
-    ? activeMod.property === "weight"
-      ? "rgba(255,255,255,0.5)"
-      : oklchToCssString(getColorAtPosition(scales, activeScale, activeMod.position))
+    ? oklchToCssString(getColorAtPosition(scales, activeScale, activeMod.position))
     : scales[activeScale]?.shades["500"] ?? "rgba(255,255,255,0.3)";
 
-  const getPropertyLabel = (): string => {
-    if (!activeMod) return "";
-    if (activeMod.property === "weight") return `W ${positionToFontWeight(activeMod.position)}`;
-    const prefix = activeMod.property === "text" ? "F" : activeMod.property === "border" ? "D" : "B";
-    return `${prefix} ${inputValue || "0"}`;
-  };
+  const propertyLabel =
+    activeMod?.property === "text" ? "F" : activeMod?.property === "border" ? "D" : "B";
 
   return (
     <>
       <AnimatePresence>
         {hasModifications && !picking && (
-          <motion.div
-            key="bar"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            data-tweaker
-            style={{
-              position: "fixed",
-              top: 0,
-              right: 0,
-              width: BAR_WIDTH_PX,
-              height: "100vh",
-              zIndex: 9999,
-              pointerEvents: "none",
-            }}
-          >
+          <>
             <motion.div
+              key="bar-vertical"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              data-tweaker
               style={{
-                position: "absolute",
-                left: 0,
+                position: "fixed",
+                top: 0,
                 right: 0,
-                bottom: 0,
-                height: fillHeight,
-                background: fillColor,
+                width: BAR_WIDTH_PX,
+                height: "100vh",
+                zIndex: 9999,
+                pointerEvents: "none",
               }}
-            />
-          </motion.div>
+            >
+              <motion.div
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: fillHeight,
+                  background: fillColor,
+                }}
+              />
+            </motion.div>
+            <motion.div
+              key="bar-horizontal"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              data-tweaker
+              style={{
+                position: "fixed",
+                bottom: 0,
+                left: 0,
+                height: BAR_WIDTH_PX,
+                width: "100vw",
+                zIndex: 9999,
+                pointerEvents: "none",
+              }}
+            >
+              <motion.div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  bottom: 0,
+                  left: 0,
+                  width: weightWidth,
+                  background: "rgba(255,255,255,0.5)",
+                }}
+              />
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 
@@ -361,7 +396,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
             {picking
               ? "Picking…"
               : hasModifications
-                ? getPropertyLabel()
+                ? `${propertyLabel} ${inputValue || "0"} · W ${Math.round(activeMod?.fontWeight ?? 400)}`
                 : "Tweaker"}
           </motion.span>
         </AnimatePresence>

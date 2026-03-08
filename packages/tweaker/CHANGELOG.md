@@ -1,5 +1,11 @@
 # tweaker
 
+## 0.2.0
+
+### Minor Changes
+
+- 2D control: X-axis adjusts font weight (100-900 continuous), Y-axis adjusts color shade simultaneously
+
 ## 0.1.0
 
 ### Minor Changes
