@@ -14,7 +14,8 @@ export interface Modification {
   originalInlineBg: string;
   originalInlineColor: string;
   originalInlineBorderColor: string;
-  property: "bg" | "text" | "border";
+  originalInlineFontWeight: string;
+  property: "bg" | "text" | "border" | "weight";
   position: number;
 }
 

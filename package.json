@@ -10,14 +10,14 @@
     "url": "https://github.com/millionco/tweaker.git"
   },
   "scripts": {
-    "dev": "pnpm --filter tweaker run dev",
-    "build": "pnpm --filter tweaker run build",
-    "test": "pnpm --filter tweaker run test",
+    "dev": "pnpm --filter @ben-million/tweaker run dev",
+    "build": "pnpm --filter @ben-million/tweaker run build",
+    "test": "pnpm --filter @ben-million/tweaker run test",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "typecheck": "pnpm --filter tweaker run typecheck",
+    "typecheck": "pnpm --filter @ben-million/tweaker run typecheck",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm build && changeset publish"

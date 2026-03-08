@@ -5,7 +5,7 @@ import { GRAY_SCALES } from "./gray-scales";
 import { SLIDER_MAX, BAR_WIDTH_PX, TYPING_RESET_DELAY_MS } from "./constants";
 import { getColorAtPosition, oklchToCssString, parseRgb, rgbToOklch, findClosestPosition } from "./utils/color";
 import { getSelector, getTextPreview } from "./utils/dom";
-import { applyModification, restoreModification, roundToStep } from "./utils/modification";
+import { applyModification, restoreModification, roundToStep, positionToFontWeight } from "./utils/modification";
 import { generatePrompt } from "./utils/prompt";
 
 export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: TweakerProps) => {
@@ -172,10 +172,10 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
         event.preventDefault();
         setPicking(true);
       }
-      if (hasModifications && (event.key === "b" || event.key === "f" || event.key === "d")) {
+      if (hasModifications && (event.key === "b" || event.key === "f" || event.key === "d" || event.key === "w")) {
         event.preventDefault();
-        const property: "bg" | "text" | "border" =
-          event.key === "b" ? "bg" : event.key === "f" ? "text" : "border";
+        const property: "bg" | "text" | "border" | "weight" =
+          event.key === "b" ? "bg" : event.key === "f" ? "text" : event.key === "d" ? "border" : "weight";
         const index = activeIndexRef.current;
         if (index < 0) return;
         setModifications((previous) => {
@@ -259,6 +259,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
         originalInlineBg: target.style.backgroundColor,
         originalInlineColor: target.style.color,
         originalInlineBorderColor: target.style.borderColor,
+        originalInlineFontWeight: target.style.fontWeight,
         property: defaultProperty,
         position,
       };
@@ -285,11 +286,17 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
   }, [picking, activeScale, scales, modifications.length]);
 
   const fillColor = activeMod
-    ? oklchToCssString(getColorAtPosition(scales, activeScale, activeMod.position))
+    ? activeMod.property === "weight"
+      ? "rgba(255,255,255,0.5)"
+      : oklchToCssString(getColorAtPosition(scales, activeScale, activeMod.position))
     : scales[activeScale]?.shades["500"] ?? "rgba(255,255,255,0.3)";
 
-  const propertyLabel =
-    activeMod?.property === "text" ? "F" : activeMod?.property === "border" ? "D" : "B";
+  const getPropertyLabel = (): string => {
+    if (!activeMod) return "";
+    if (activeMod.property === "weight") return `W ${positionToFontWeight(activeMod.position)}`;
+    const prefix = activeMod.property === "text" ? "F" : activeMod.property === "border" ? "D" : "B";
+    return `${prefix} ${inputValue || "0"}`;
+  };
 
   return (
     <>
@@ -354,7 +361,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
             {picking
               ? "Picking…"
               : hasModifications
-                ? `${propertyLabel} ${inputValue || "0"}`
+                ? getPropertyLabel()
                 : "Tweaker"}
           </motion.span>
         </AnimatePresence>
