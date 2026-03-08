@@ -1,5 +1,11 @@
 # tweaker
 
+## 0.3.0
+
+### Minor Changes
+
+- Switch from mouse position to scroll/trackpad gesture control. Scroll up/down adjusts color shade, scroll left/right adjusts font weight. Optimized for Magic Trackpad and MacBook trackpads.
+
 ## 0.2.0
 
 ### Minor Changes
