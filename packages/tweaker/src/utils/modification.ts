@@ -15,7 +15,7 @@ export const applyModification = (
   } else {
     modification.element.style.borderColor = colorValue;
   }
-  modification.element.style.fontSize = `${Math.round(modification.fontSize)}px`;
+  modification.element.style.fontSize = `${modification.fontSize}px`;
   modification.element.style.paddingTop = `${Math.round(modification.paddingY)}px`;
   modification.element.style.paddingBottom = `${Math.round(modification.paddingY)}px`;
   modification.element.style.paddingLeft = `${Math.round(modification.paddingX)}px`;
@@ -35,3 +35,6 @@ export const restoreModification = (modification: Modification) => {
 
 export const roundToStep = (value: number): number =>
   parseFloat((Math.round(value * 10) / 10).toFixed(1));
+
+export const roundToHalf = (value: number): number =>
+  Math.round(value * 2) / 2;

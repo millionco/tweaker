@@ -5,7 +5,7 @@ import { GRAY_SCALES } from "./gray-scales";
 import { SLIDER_MAX, TYPING_RESET_DELAY_MS, FONT_SIZE_MIN_PX, FONT_SIZE_MAX_PX, PADDING_MIN_PX, PADDING_MAX_PX, SCROLL_COLOR_SENSITIVITY, SCROLL_SIZE_SENSITIVITY, SCROLL_PADDING_SENSITIVITY, MINIMAP_WIDTH_PX, MINIMAP_HEIGHT_PX, THUMB_SIZE_PX } from "./constants";
 import { getColorAtPosition, oklchToCssString, parseRgb, rgbToOklch, findClosestPosition } from "./utils/color";
 import { getSelector, getTextPreview } from "./utils/dom";
-import { applyModification, restoreModification, roundToStep } from "./utils/modification";
+import { applyModification, restoreModification, roundToStep, roundToHalf } from "./utils/modification";
 import { generatePrompt } from "./utils/prompt";
 
 type ScrollMode = "style" | "padding";
@@ -65,7 +65,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
         } else {
           const newPosition = Math.max(0, Math.min(SLIDER_MAX, current.position - event.deltaY * SCROLL_COLOR_SENSITIVITY));
           const newSize = Math.max(FONT_SIZE_MIN_PX, Math.min(FONT_SIZE_MAX_PX, current.fontSize + event.deltaX * SCROLL_SIZE_SENSITIVITY));
-          updated[index] = { ...current, position: roundToStep(newPosition), fontSize: Math.round(newSize) };
+          updated[index] = { ...current, position: roundToStep(newPosition), fontSize: roundToHalf(newSize) };
         }
 
         applyModification(updated[index], scalesRef.current, activeScaleRef.current);
@@ -394,7 +394,7 @@ export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: Tweak
               <span style={minimapLabelStyle}>
                 {scrollMode === "padding"
                   ? `X ${activeMod.paddingX}px`
-                  : `${Math.round(activeMod.fontSize)}px`}
+                  : `${activeMod.fontSize}px`}
               </span>
             )}
           </div>

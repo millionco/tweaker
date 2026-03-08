@@ -1,6 +1,6 @@
 {
   "name": "@ben-million/tweaker",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "A dev tool for tweaking colors along gray scales in React apps",
   "keywords": [
     "react",

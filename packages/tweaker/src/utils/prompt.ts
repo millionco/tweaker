@@ -30,22 +30,11 @@ export const generatePrompt = (
     colorLines.push(`- ${property} of ${description} → ${scaleName} ${shade} (${formatOklch(oklch)})`);
     if (modification.sourceFile) colorLines.push(`  Source: ${modification.sourceFile}`);
 
-    const originalSize = modification.originalInlineFontSize
-      || getComputedStyle(modification.element).fontSize;
-    const newSize = Math.round(modification.fontSize);
-    if (`${newSize}px` !== originalSize) {
-      sizeLines.push(`- font-size of ${description} → ${newSize}px`);
-      if (modification.sourceFile) sizeLines.push(`  Source: ${modification.sourceFile}`);
-    }
+    sizeLines.push(`- font-size of ${description} → ${modification.fontSize}px`);
+    if (modification.sourceFile) sizeLines.push(`  Source: ${modification.sourceFile}`);
 
-    const originalPaddingY = parseFloat(getComputedStyle(modification.element).paddingTop) || 0;
-    const originalPaddingX = parseFloat(getComputedStyle(modification.element).paddingLeft) || 0;
-    const newPaddingY = Math.round(modification.paddingY);
-    const newPaddingX = Math.round(modification.paddingX);
-    if (newPaddingY !== Math.round(originalPaddingY) || newPaddingX !== Math.round(originalPaddingX)) {
-      paddingLines.push(`- padding of ${description} → ${newPaddingY}px ${newPaddingX}px`);
-      if (modification.sourceFile) paddingLines.push(`  Source: ${modification.sourceFile}`);
-    }
+    paddingLines.push(`- padding of ${description} → ${Math.round(modification.paddingY)}px ${Math.round(modification.paddingX)}px`);
+    if (modification.sourceFile) paddingLines.push(`  Source: ${modification.sourceFile}`);
   });
 
   const sections: string[] = [];
