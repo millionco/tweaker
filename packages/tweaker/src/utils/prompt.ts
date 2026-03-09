@@ -1,11 +1,10 @@
-import type { GrayScale, Modification } from "../types";
-import type { RepositionContext, ParentLayoutInfo } from "./nearby";
-import { formatOklch, getColorAtPosition, getClosestShadeLabel } from "./color";
+import type { DraggedElement } from "../types";
+import type { ParentLayoutInfo, RepositionContext } from "./nearby";
 
-const describeModification = (modification: Modification): string => {
-  const nameParts = [modification.selector];
-  if (modification.componentName) nameParts.unshift(`<${modification.componentName}>`);
-  if (modification.textPreview) nameParts.push(`("${modification.textPreview}")`);
+const describeDraggedElement = (draggedElement: DraggedElement): string => {
+  const nameParts = [draggedElement.selector];
+  if (draggedElement.componentName) nameParts.unshift(`<${draggedElement.componentName}>`);
+  if (draggedElement.textPreview) nameParts.push(`("${draggedElement.textPreview}")`);
   return nameParts.join(" ");
 };
 
@@ -20,7 +19,7 @@ const formatParentLayout = (layout: ParentLayoutInfo): string => {
   return parts.join(", ");
 };
 
-const formatGapComparison = (
+const formatSpacingInstruction = (
   targetGap: number,
   parentGap: number,
   direction: string,
@@ -44,22 +43,36 @@ const formatGapComparison = (
   return `The ${targetGap}px gap ${direction} is ${Math.abs(difference)}px less than the parent gap (${parentGap}px) — add ${marginProperty}: ${difference}px.`;
 };
 
+const formatFallbackInstruction = (draggedElement: DraggedElement): string[] => {
+  const description = describeDraggedElement(draggedElement);
+  const lines = [`- ${description}`];
+
+  if (draggedElement.sourceFile) {
+    lines.push(`  Source: ${draggedElement.sourceFile}`);
+  }
+
+  lines.push(
+    `  Match the dragged preview without CSS transforms (preview offset: x=${draggedElement.translateX}px, y=${draggedElement.translateY}px).`,
+  );
+
+  return lines;
+};
+
 const formatRepositionInstruction = (
-  modification: Modification,
+  draggedElement: DraggedElement,
   context: RepositionContext,
 ): string[] => {
-  const description = describeModification(modification);
+  const description = describeDraggedElement(draggedElement);
   const lines: string[] = [];
 
   lines.push(`- ${description}`);
-  if (modification.sourceFile) lines.push(`  Source: ${modification.sourceFile}`);
+  if (draggedElement.sourceFile) lines.push(`  Source: ${draggedElement.sourceFile}`);
 
-  const parentDescription = context.tree.selector;
-  const parentComponentName = context.tree.componentName;
-  const parentLabel = parentComponentName
-    ? `<${parentComponentName}> ${parentDescription}`
-    : parentDescription;
+  const parentLabel = context.parentComponentName
+    ? `<${context.parentComponentName}> ${context.parentDescription}`
+    : context.parentDescription;
   lines.push(`  Parent: ${parentLabel} (${formatParentLayout(context.parentLayout)})`);
+  lines.push(`  Drag preview: x=${draggedElement.translateX}px, y=${draggedElement.translateY}px`);
 
   const fromIndex = context.originalChildIndex + 1;
   const toIndex = context.insertionIndex + 1;
@@ -79,18 +92,18 @@ const formatRepositionInstruction = (
   if (isHorizontal) {
     lines.push("  Neighbors at target position:");
     if (context.previousSibling) {
-      lines.push(`    Left:  ${context.previousSibling.description} — ${context.gapLeft}px gap`);
+      lines.push(`    Left:  ${context.previousSibling.description} — ${context.gapBefore}px gap`);
     }
     if (context.nextSibling) {
-      lines.push(`    Right: ${context.nextSibling.description} — ${context.gapRight}px gap`);
+      lines.push(`    Right: ${context.nextSibling.description} — ${context.gapAfter}px gap`);
     }
   } else {
     lines.push("  Neighbors at target position:");
     if (context.previousSibling) {
-      lines.push(`    Above: ${context.previousSibling.description} — ${context.gapAbove}px gap`);
+      lines.push(`    Above: ${context.previousSibling.description} — ${context.gapBefore}px gap`);
     }
     if (context.nextSibling) {
-      lines.push(`    Below: ${context.nextSibling.description} — ${context.gapBelow}px gap`);
+      lines.push(`    Below: ${context.nextSibling.description} — ${context.gapAfter}px gap`);
     }
   }
 
@@ -100,11 +113,14 @@ const formatRepositionInstruction = (
 
   lines.push("");
 
-  const margin = context.existingMargin;
   if (isHorizontal) {
-    lines.push(`  Current element margins: left=${margin.left}px, right=${margin.right}px`);
+    lines.push(
+      `  Current element margins: left=${context.existingMarginBefore}px, right=${context.existingMarginAfter}px`,
+    );
   } else {
-    lines.push(`  Current element margins: top=${margin.top}px, bottom=${margin.bottom}px`);
+    lines.push(
+      `  Current element margins: top=${context.existingMarginBefore}px, bottom=${context.existingMarginAfter}px`,
+    );
   }
 
   lines.push("");
@@ -119,10 +135,10 @@ const formatRepositionInstruction = (
 
   if (isHorizontal) {
     const leftComparison = context.previousSibling
-      ? formatGapComparison(context.gapLeft, parentGap, "left")
+      ? formatSpacingInstruction(context.gapBefore, parentGap, "left")
       : null;
     const rightComparison = context.nextSibling
-      ? formatGapComparison(context.gapRight, parentGap, "right")
+      ? formatSpacingInstruction(context.gapAfter, parentGap, "right")
       : null;
 
     if (leftComparison) instructions.push(leftComparison);
@@ -134,24 +150,24 @@ const formatRepositionInstruction = (
       );
     }
 
-    if (parentGap <= 0 && (context.gapLeft !== 0 || context.gapRight !== 0)) {
-      if (context.previousSibling && context.gapLeft !== 0) {
+    if (parentGap <= 0 && (context.gapBefore !== 0 || context.gapAfter !== 0)) {
+      if (context.previousSibling && context.gapBefore !== 0) {
         instructions.push(
-          `Set margin-left: ${context.gapLeft}px for the ${context.gapLeft}px gap to the left.`,
+          `Set margin-left: ${context.gapBefore}px for the ${context.gapBefore}px gap to the left.`,
         );
       }
-      if (context.nextSibling && context.gapRight !== 0) {
+      if (context.nextSibling && context.gapAfter !== 0) {
         instructions.push(
-          `Set margin-right: ${context.gapRight}px for the ${context.gapRight}px gap to the right.`,
+          `Set margin-right: ${context.gapAfter}px for the ${context.gapAfter}px gap to the right.`,
         );
       }
     }
   } else {
     const aboveComparison = context.previousSibling
-      ? formatGapComparison(context.gapAbove, parentGap, "above")
+      ? formatSpacingInstruction(context.gapBefore, parentGap, "above")
       : null;
     const belowComparison = context.nextSibling
-      ? formatGapComparison(context.gapBelow, parentGap, "below")
+      ? formatSpacingInstruction(context.gapAfter, parentGap, "below")
       : null;
 
     if (aboveComparison) instructions.push(aboveComparison);
@@ -163,15 +179,15 @@ const formatRepositionInstruction = (
       );
     }
 
-    if (parentGap <= 0 && (context.gapAbove !== 0 || context.gapBelow !== 0)) {
-      if (context.previousSibling && context.gapAbove !== 0) {
+    if (parentGap <= 0 && (context.gapBefore !== 0 || context.gapAfter !== 0)) {
+      if (context.previousSibling && context.gapBefore !== 0) {
         instructions.push(
-          `Set margin-top: ${context.gapAbove}px for the ${context.gapAbove}px gap above.`,
+          `Set margin-top: ${context.gapBefore}px for the ${context.gapBefore}px gap above.`,
         );
       }
-      if (context.nextSibling && context.gapBelow !== 0) {
+      if (context.nextSibling && context.gapAfter !== 0) {
         instructions.push(
-          `Set margin-bottom: ${context.gapBelow}px for the ${context.gapBelow}px gap below.`,
+          `Set margin-bottom: ${context.gapAfter}px for the ${context.gapAfter}px gap below.`,
         );
       }
     }
@@ -189,77 +205,29 @@ const formatRepositionInstruction = (
 };
 
 export const generatePrompt = (
-  modifications: Modification[],
-  scales: Record<string, GrayScale>,
-  scaleKey: string,
+  draggedElements: DraggedElement[],
   repositionContexts?: Map<number, RepositionContext>,
 ): string => {
-  if (modifications.length === 0) return "";
+  if (draggedElements.length === 0) return "";
 
-  const scaleName = scales[scaleKey]?.label || scaleKey;
-  const colorLines: string[] = [];
-  const sizeLines: string[] = [];
-  const paddingLines: string[] = [];
   const positionLines: string[] = [];
 
-  modifications.forEach((modification, index) => {
-    const description = describeModification(modification);
-
-    const shade = getClosestShadeLabel(modification.position);
-    const oklch = getColorAtPosition(scales, scaleKey, modification.position);
-    const property =
-      modification.property === "bg"
-        ? "background color"
-        : modification.property === "text"
-          ? "text color"
-          : "border color";
-    colorLines.push(
-      `- ${property} of ${description} → ${scaleName} ${shade} (${formatOklch(oklch)})`,
-    );
-    if (modification.sourceFile) colorLines.push(`  Source: ${modification.sourceFile}`);
-
-    sizeLines.push(`- font-size of ${description} → ${modification.fontSize}px`);
-    if (modification.sourceFile) sizeLines.push(`  Source: ${modification.sourceFile}`);
-
-    paddingLines.push(
-      `- vertical padding of ${description} → ${Math.round(modification.paddingY)}px`,
-    );
-    if (modification.sourceFile) paddingLines.push(`  Source: ${modification.sourceFile}`);
-
+  draggedElements.forEach((draggedElement, index) => {
     const context = repositionContexts?.get(index);
-    if (context && (modification.translateX !== 0 || modification.translateY !== 0)) {
-      positionLines.push(...formatRepositionInstruction(modification, context));
+    if (context) {
+      positionLines.push(...formatRepositionInstruction(draggedElement, context));
+      return;
     }
+
+    positionLines.push(...formatFallbackInstruction(draggedElement));
   });
 
-  const sections: string[] = [];
+  if (positionLines.length === 0) return "";
 
-  if (colorLines.length > 0) {
-    sections.push(
-      "Change the following colors using the design system's gray scale:",
-      "",
-      ...colorLines,
-    );
-  }
-
-  if (sizeLines.length > 0) {
-    if (sections.length > 0) sections.push("");
-    sections.push("Change the following font sizes:", "", ...sizeLines);
-  }
-
-  if (paddingLines.length > 0) {
-    if (sections.length > 0) sections.push("");
-    sections.push("Change the following padding:", "", ...paddingLines);
-  }
-
-  if (positionLines.length > 0) {
-    if (sections.length > 0) sections.push("");
-    sections.push(
-      "Reposition the following element (do NOT use CSS transforms — re-order the JSX and adjust spacing):",
-      "",
-      ...positionLines,
-    );
-  }
-
-  return sections.join("\n");
+  return [
+    "Reposition the following dragged elements within their current parent in the DOM.",
+    "Do not use CSS transforms in the final implementation — reorder the JSX and adjust spacing instead.",
+    "",
+    ...positionLines,
+  ].join("\n");
 };

@@ -1,22 +1,7 @@
-import { DOM_TREE_MAX_NODES } from "../constants";
 import { getSelector, getTextPreview } from "./dom";
-
-export interface TreeNode {
-  selector: string;
-  componentName: string | null;
-  textPreview: string;
-  positionX: number;
-  positionY: number;
-  width: number;
-  height: number;
-  isSelf: boolean;
-  children: TreeNode[];
-  layout: string | null;
-}
 
 export interface SiblingInfo {
   description: string;
-  edgePosition: number;
 }
 
 export interface ParentLayoutInfo {
@@ -24,7 +9,6 @@ export interface ParentLayoutInfo {
   flowAxis: "vertical" | "horizontal";
   flexDirection: string | null;
   gap: number;
-  crossGap: number;
 }
 
 interface ElementRect {
@@ -37,26 +21,20 @@ interface ElementRect {
 }
 
 export interface RepositionContext {
-  originalPositionX: number;
-  originalPositionY: number;
-  newPositionX: number;
-  newPositionY: number;
   translateX: number;
   translateY: number;
-  elementWidth: number;
-  elementHeight: number;
   originalChildIndex: number;
   insertionIndex: number;
   siblingCount: number;
+  parentDescription: string;
+  parentComponentName: string | null;
   previousSibling: SiblingInfo | null;
   nextSibling: SiblingInfo | null;
-  gapAbove: number;
-  gapBelow: number;
-  gapLeft: number;
-  gapRight: number;
-  existingMargin: { top: number; bottom: number; left: number; right: number };
+  gapBefore: number;
+  gapAfter: number;
+  existingMarginBefore: number;
+  existingMarginAfter: number;
   parentLayout: ParentLayoutInfo;
-  tree: TreeNode;
 }
 
 const parsePxValue = (value: string): number => {
@@ -116,11 +94,7 @@ const detectParentLayout = (parent: HTMLElement): ParentLayoutInfo => {
     flowAxis = autoFlow.includes("column") ? "horizontal" : "vertical";
   }
 
-  const rowGap = parsePxValue(computed.rowGap);
-  const columnGap = parsePxValue(computed.columnGap);
-
-  const gap = flowAxis === "vertical" ? rowGap : columnGap;
-  const crossGap = flowAxis === "vertical" ? columnGap : rowGap;
+  const gap = parsePxValue(flowAxis === "vertical" ? computed.rowGap : computed.columnGap);
 
   const displayLabel = isFlex ? "flex" : isGrid ? "grid" : "block";
 
@@ -129,7 +103,6 @@ const detectParentLayout = (parent: HTMLElement): ParentLayoutInfo => {
     flowAxis,
     flexDirection: isFlex ? flexDirection : null,
     gap,
-    crossGap,
   };
 };
 
@@ -208,44 +181,6 @@ interface SiblingEntry {
   isSelf: boolean;
 }
 
-const buildTreeNode = (
-  element: HTMLElement,
-  selfElement: HTMLElement,
-  depth: number,
-  nodeCount: { current: number },
-): TreeNode | null => {
-  if (nodeCount.current >= DOM_TREE_MAX_NODES) return null;
-  nodeCount.current++;
-
-  const rect = getAbsoluteRect(element);
-  const children: TreeNode[] = [];
-
-  if (depth < 3) {
-    for (const child of Array.from(element.children)) {
-      if (nodeCount.current >= DOM_TREE_MAX_NODES) break;
-      const childNode = buildTreeNode(child as HTMLElement, selfElement, depth + 1, nodeCount);
-      if (childNode) children.push(childNode);
-    }
-  }
-
-  const layoutInfo = children.length > 0 ? detectParentLayout(element) : null;
-
-  return {
-    selector: getSelector(element),
-    componentName: getReactComponentName(element),
-    textPreview: getTextPreview(element),
-    positionX: Math.round(rect.left),
-    positionY: Math.round(rect.top),
-    width: Math.round(rect.width),
-    height: Math.round(rect.height),
-    isSelf: element === selfElement,
-    children,
-    layout: layoutInfo
-      ? `${layoutInfo.display}${layoutInfo.flexDirection ? `-${layoutInfo.flowAxis === "horizontal" ? "row" : "column"}` : ""}`
-      : null,
-  };
-};
-
 const findInsertionIndex = (
   siblings: SiblingEntry[],
   newRect: ElementRect,
@@ -286,29 +221,34 @@ const findInsertionIndex = (
   return { insertionIndex, previousSibling, nextSibling };
 };
 
-const computeGaps = (
+const computeSpacing = (
   newRect: ElementRect,
   parentContentEdges: ElementRect,
+  flowAxis: "vertical" | "horizontal",
   previousSibling: SiblingEntry | null,
   nextSibling: SiblingEntry | null,
-): { gapAbove: number; gapBelow: number; gapLeft: number; gapRight: number } => {
-  const gapAbove = previousSibling
-    ? Math.round(newRect.top - previousSibling.rect.bottom)
-    : Math.round(newRect.top - parentContentEdges.top);
+): { gapBefore: number; gapAfter: number } => {
+  if (flowAxis === "vertical") {
+    const gapBefore = previousSibling
+      ? Math.round(newRect.top - previousSibling.rect.bottom)
+      : Math.round(newRect.top - parentContentEdges.top);
 
-  const gapBelow = nextSibling
-    ? Math.round(nextSibling.rect.top - newRect.bottom)
-    : Math.round(parentContentEdges.bottom - newRect.bottom);
+    const gapAfter = nextSibling
+      ? Math.round(nextSibling.rect.top - newRect.bottom)
+      : Math.round(parentContentEdges.bottom - newRect.bottom);
 
-  const gapLeft = previousSibling
+    return { gapBefore, gapAfter };
+  }
+
+  const gapBefore = previousSibling
     ? Math.round(newRect.left - previousSibling.rect.right)
     : Math.round(newRect.left - parentContentEdges.left);
 
-  const gapRight = nextSibling
+  const gapAfter = nextSibling
     ? Math.round(nextSibling.rect.left - newRect.right)
     : Math.round(parentContentEdges.right - newRect.right);
 
-  return { gapAbove, gapBelow, gapLeft, gapRight };
+  return { gapBefore, gapAfter };
 };
 
 export const gatherRepositionContext = (
@@ -349,65 +289,48 @@ export const gatherRepositionContext = (
     parentLayout.flowAxis,
   );
 
-  const { gapAbove, gapBelow, gapLeft, gapRight } = computeGaps(
+  const { gapBefore, gapAfter } = computeSpacing(
     newRect,
     parentContentEdges,
+    parentLayout.flowAxis,
     previousSibling,
     nextSibling,
   );
 
   const computed = getComputedStyle(element);
-  const existingMargin = {
-    top: parsePxValue(computed.marginTop),
-    bottom: parsePxValue(computed.marginBottom),
-    left: parsePxValue(computed.marginLeft),
-    right: parsePxValue(computed.marginRight),
-  };
+  const existingMarginBefore = parsePxValue(
+    parentLayout.flowAxis === "vertical" ? computed.marginTop : computed.marginLeft,
+  );
+  const existingMarginAfter = parsePxValue(
+    parentLayout.flowAxis === "vertical" ? computed.marginBottom : computed.marginRight,
+  );
 
   const previousSiblingInfo: SiblingInfo | null = previousSibling
     ? {
         description: describeElement(previousSibling.element),
-        edgePosition:
-          parentLayout.flowAxis === "vertical"
-            ? Math.round(previousSibling.rect.bottom)
-            : Math.round(previousSibling.rect.right),
       }
     : null;
 
   const nextSiblingInfo: SiblingInfo | null = nextSibling
     ? {
         description: describeElement(nextSibling.element),
-        edgePosition:
-          parentLayout.flowAxis === "vertical"
-            ? Math.round(nextSibling.rect.top)
-            : Math.round(nextSibling.rect.left),
       }
     : null;
 
-  const nodeCount = { current: 0 };
-  const tree = buildTreeNode(parent, element, 0, nodeCount);
-  if (!tree) return null;
-
   return {
-    originalPositionX: Math.round(originalRect.left),
-    originalPositionY: Math.round(originalRect.top),
-    newPositionX: Math.round(newRect.left),
-    newPositionY: Math.round(newRect.top),
     translateX,
     translateY,
-    elementWidth: Math.round(originalRect.width),
-    elementHeight: Math.round(originalRect.height),
     originalChildIndex,
     insertionIndex,
     siblingCount: siblings.length - 1,
+    parentDescription: getSelector(parent),
+    parentComponentName: getReactComponentName(parent),
     previousSibling: previousSiblingInfo,
     nextSibling: nextSiblingInfo,
-    gapAbove,
-    gapBelow,
-    gapLeft,
-    gapRight,
-    existingMargin,
+    gapBefore,
+    gapAfter,
+    existingMarginBefore,
+    existingMarginAfter,
     parentLayout,
-    tree,
   };
 };
