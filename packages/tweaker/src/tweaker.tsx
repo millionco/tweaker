@@ -1,615 +1,536 @@
-import { useState, useCallback, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import type { Modification, TweakerProps } from "./types";
-import { GRAY_SCALES } from "./gray-scales";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  SLIDER_MAX,
-  TYPING_RESET_DELAY_MS,
-  FONT_SIZE_MIN_PX,
-  FONT_SIZE_MAX_PX,
-  PADDING_MIN_PX,
-  PADDING_MAX_PX,
-  MOUSE_COLOR_SENSITIVITY,
-  MOUSE_SIZE_SENSITIVITY,
-  MOUSE_PADDING_SENSITIVITY,
-  MINIMAP_WIDTH_PX,
-  MINIMAP_HEIGHT_PX,
-  THUMB_SIZE_PX,
+  TWEAKER_BUTTON_BORDER_RADIUS_PX,
+  TWEAKER_BUTTON_FONT_SIZE_PX,
+  TWEAKER_BUTTON_GAP_PX,
+  TWEAKER_BUTTON_PADDING_X_PX,
+  TWEAKER_BUTTON_PADDING_Y_PX,
+  TWEAKER_DRAG_THRESHOLD_PX,
+  TWEAKER_HOVER_OUTLINE_OFFSET_PX,
+  TWEAKER_HOVER_OUTLINE_WIDTH_PX,
+  TWEAKER_OFFSET_PX,
+  TWEAKER_STATUS_FONT_SIZE_PX,
+  TWEAKER_STATUS_RESET_DELAY_MS,
+  TWEAKER_Z_INDEX,
 } from "./constants";
-import {
-  getColorAtPosition,
-  oklchToCssString,
-  parseRgb,
-  rgbToOklch,
-  findClosestPosition,
-} from "./utils/color";
+import type { DraggedElement, ElementSourceMetadata, TweakerProps } from "./types";
 import { getSelector, getTextPreview } from "./utils/dom";
-import {
-  applyModification,
-  restoreModification,
-  roundToStep,
-  roundToHalf,
-} from "./utils/modification";
-import { generatePrompt } from "./utils/prompt";
+import { getMovedDraggedElements } from "./utils/get-moved-dragged-elements";
 import { gatherRepositionContext } from "./utils/nearby";
 import type { RepositionContext } from "./utils/nearby";
+import { generatePrompt } from "./utils/prompt";
+import { applyTranslatePreview, restoreTranslatePreview } from "./utils/translate-preview";
+import { upsertDraggedElement } from "./utils/upsert-dragged-element";
 
-const requestLock = () => {
-  if (!document.pointerLockElement) {
-    document.body.requestPointerLock();
-  }
+interface HoveredElementState {
+  element: HTMLElement;
+  originalInlineOutline: string;
+  originalInlineOutlineOffset: string;
+}
+
+interface ActiveDragSession {
+  element: HTMLElement;
+  startClientX: number;
+  startClientY: number;
+  startingTranslateX: number;
+  startingTranslateY: number;
+  currentTranslateX: number;
+  currentTranslateY: number;
+  didCrossDragThreshold: boolean;
+}
+
+interface ReactGrabFrame {
+  fileName?: string;
+  functionName?: string;
+}
+
+interface ReactGrabModule {
+  getStack: (element: Element) => Promise<ReactGrabFrame[]>;
+}
+
+const getEventTargetElement = (eventTarget: EventTarget | null): HTMLElement | null =>
+  eventTarget instanceof HTMLElement ? eventTarget : null;
+
+const isEditableElement = (eventTarget: EventTarget | null): boolean => {
+  const targetElement = getEventTargetElement(eventTarget);
+  if (!targetElement) return false;
+  if (targetElement.isContentEditable) return true;
+
+  const tagName = targetElement.tagName;
+  return tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT";
 };
 
-const releaseLock = () => {
-  if (document.pointerLockElement) {
-    document.exitPointerLock();
+const getReactGrabModule = (): ReactGrabModule | null => {
+  const maybeReactGrabModule = (window as unknown as Record<string, unknown>).__REACT_GRAB_MODULE__;
+  if (!maybeReactGrabModule || typeof maybeReactGrabModule !== "object") {
+    return null;
   }
+
+  const maybeGetStack = (maybeReactGrabModule as Record<string, unknown>).getStack;
+  if (typeof maybeGetStack !== "function") {
+    return null;
+  }
+
+  return maybeReactGrabModule as ReactGrabModule;
 };
 
-export const Tweaker = ({ scales = GRAY_SCALES, activeScale = "neutral" }: TweakerProps) => {
-  const [picking, setPicking] = useState(false);
-  const [modifications, setModifications] = useState<Modification[]>([]);
-  const [activeIndex, setActiveIndex] = useState(-1);
-  const [inputValue, setInputValue] = useState("");
-  const [shiftHeld, setShiftHeld] = useState(false);
-  const [spaceHeld, setSpaceHeld] = useState(false);
-  const [controlHeld, setControlHeld] = useState(false);
-  const typingBuffer = useRef("");
-  const typingTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
+const getElementSourceMetadata = async (element: HTMLElement): Promise<ElementSourceMetadata> => {
+  let componentName: string | null = null;
+  let sourceFile: string | null = null;
 
-  const activeMod = activeIndex >= 0 ? modifications[activeIndex] : null;
-  const hasModifications = modifications.length > 0;
+  try {
+    const reactGrabModule = getReactGrabModule();
+    if (!reactGrabModule) {
+      return { componentName, sourceFile };
+    }
 
-  const activeIndexRef = useRef(activeIndex);
-  const activeScaleRef = useRef(activeScale);
-  const modificationsRef = useRef(modifications);
-  const scalesRef = useRef(scales);
-  activeIndexRef.current = activeIndex;
-  activeScaleRef.current = activeScale;
-  modificationsRef.current = modifications;
-  scalesRef.current = scales;
+    const stack = await reactGrabModule.getStack(element);
+    for (const frame of stack) {
+      if (!frame.fileName || frame.fileName.includes("node_modules")) {
+        continue;
+      }
 
-  const updateActivePosition = useCallback(
-    (newPosition: number) => {
-      if (activeIndex < 0) return;
-      setModifications((previous) => {
-        const updated = [...previous];
-        updated[activeIndex] = { ...updated[activeIndex], position: newPosition };
-        applyModification(updated[activeIndex], scales, activeScale);
-        return updated;
+      sourceFile = frame.fileName;
+      if (frame.functionName && /^[A-Z]/.test(frame.functionName)) {
+        componentName = frame.functionName;
+      }
+      break;
+    }
+  } catch {}
+
+  return { componentName, sourceFile };
+};
+
+const createDraggedElement = (element: HTMLElement): DraggedElement => ({
+  element,
+  selector: getSelector(element),
+  componentName: null,
+  sourceFile: null,
+  textPreview: getTextPreview(element),
+  originalInlineTranslate: element.style.getPropertyValue("translate"),
+  translateX: 0,
+  translateY: 0,
+});
+
+const getStatusMessage = (
+  isEnabled: boolean,
+  promptStatus: string,
+  movedDraggedElementCount: number,
+): string => {
+  if (!isEnabled) {
+    return "Toggle on to drag elements and press Enter for a DOM prompt.";
+  }
+
+  if (promptStatus === "copied") {
+    return "Prompt copied.";
+  }
+
+  if (promptStatus === "copy-failed") {
+    return "Clipboard copy failed.";
+  }
+
+  if (promptStatus === "empty") {
+    return "Drag an element before copying.";
+  }
+
+  if (movedDraggedElementCount === 0) {
+    return "Drag any element. Press Enter to copy or Escape to reset.";
+  }
+
+  const draggedElementCountLabel =
+    movedDraggedElementCount === 1
+      ? "1 moved element"
+      : `${movedDraggedElementCount} moved elements`;
+
+  return `${draggedElementCountLabel}. Press Enter to copy or Escape to reset.`;
+};
+
+export const Tweaker = (_props: TweakerProps) => {
+  const [isEnabled, setIsEnabled] = useState(false);
+  const [draggedElements, setDraggedElements] = useState<DraggedElement[]>([]);
+  const [promptStatus, setPromptStatus] = useState("idle");
+
+  const draggedElementsRef = useRef(draggedElements);
+  const hoveredElementRef = useRef<HoveredElementState | null>(null);
+  const activeDragRef = useRef<ActiveDragSession | null>(null);
+  const promptStatusTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  draggedElementsRef.current = draggedElements;
+
+  const syncDraggedElements = useCallback(
+    (getNextDraggedElements: (previousDraggedElements: DraggedElement[]) => DraggedElement[]) => {
+      setDraggedElements((previousDraggedElements) => {
+        const nextDraggedElements = getNextDraggedElements(previousDraggedElements);
+        draggedElementsRef.current = nextDraggedElements;
+        return nextDraggedElements;
       });
     },
-    [activeIndex, activeScale, scales],
+    [],
   );
+
+  const clearHoveredElement = useCallback(() => {
+    const hoveredElement = hoveredElementRef.current;
+    if (!hoveredElement) {
+      return;
+    }
+
+    hoveredElement.element.style.outline = hoveredElement.originalInlineOutline;
+    hoveredElement.element.style.outlineOffset = hoveredElement.originalInlineOutlineOffset;
+    hoveredElementRef.current = null;
+  }, []);
+
+  const setHoveredElement = useCallback(
+    (element: HTMLElement | null) => {
+      const currentHoveredElement = hoveredElementRef.current?.element;
+      if (currentHoveredElement === element) {
+        return;
+      }
+
+      clearHoveredElement();
+
+      if (!element) {
+        return;
+      }
+
+      hoveredElementRef.current = {
+        element,
+        originalInlineOutline: element.style.outline,
+        originalInlineOutlineOffset: element.style.outlineOffset,
+      };
+      element.style.outline = `${TWEAKER_HOVER_OUTLINE_WIDTH_PX}px solid rgba(59, 130, 246, 0.9)`;
+      element.style.outlineOffset = `${TWEAKER_HOVER_OUTLINE_OFFSET_PX}px`;
+    },
+    [clearHoveredElement],
+  );
+
+  const resetPromptStatus = useCallback(() => {
+    clearTimeout(promptStatusTimeoutRef.current);
+    promptStatusTimeoutRef.current = setTimeout(() => {
+      setPromptStatus("idle");
+    }, TWEAKER_STATUS_RESET_DELAY_MS);
+  }, []);
+
+  const hydrateDraggedElementMetadata = useCallback(
+    async (element: HTMLElement) => {
+      const sourceMetadata = await getElementSourceMetadata(element);
+      syncDraggedElements((previousDraggedElements) =>
+        previousDraggedElements.map((draggedElement) =>
+          draggedElement.element === element
+            ? { ...draggedElement, ...sourceMetadata }
+            : draggedElement,
+        ),
+      );
+    },
+    [syncDraggedElements],
+  );
+
+  const clearSession = useCallback(
+    (shouldDisableTweaker: boolean) => {
+      clearHoveredElement();
+      draggedElementsRef.current.forEach(restoreTranslatePreview);
+      activeDragRef.current = null;
+      syncDraggedElements(() => []);
+      clearTimeout(promptStatusTimeoutRef.current);
+      setPromptStatus("idle");
+      if (shouldDisableTweaker) {
+        setIsEnabled(false);
+      }
+    },
+    [clearHoveredElement, syncDraggedElements],
+  );
+
+  const copyPromptToClipboard = useCallback(async () => {
+    const movedDraggedElements = getMovedDraggedElements(draggedElementsRef.current);
+    if (movedDraggedElements.length === 0) {
+      setPromptStatus("empty");
+      resetPromptStatus();
+      return;
+    }
+
+    const repositionContexts = new Map<number, RepositionContext>();
+    movedDraggedElements.forEach((draggedElement, index) => {
+      const repositionContext = gatherRepositionContext(
+        draggedElement.element,
+        draggedElement.translateX,
+        draggedElement.translateY,
+      );
+      if (repositionContext) {
+        repositionContexts.set(index, repositionContext);
+      }
+    });
+
+    const prompt = generatePrompt(movedDraggedElements, repositionContexts);
+    if (!prompt) {
+      setPromptStatus("empty");
+      resetPromptStatus();
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setPromptStatus("copied");
+    } catch {
+      setPromptStatus("copy-failed");
+    }
+
+    resetPromptStatus();
+  }, [resetPromptStatus]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      setShiftHeld(event.shiftKey);
-      if (event.key === " ") setSpaceHeld(true);
-      if (event.key === "Control") setControlHeld(true);
-    };
-    const handleKeyUp = (event: KeyboardEvent) => {
-      setShiftHeld(event.shiftKey);
-      if (event.key === " ") setSpaceHeld(false);
-      if (event.key === "Control") setControlHeld(false);
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("keyup", handleKeyUp);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("keyup", handleKeyUp);
-    };
-  }, []);
+      if (isEditableElement(event.target)) {
+        return;
+      }
 
-  useEffect(() => {
-    if (!hasModifications || picking) return;
-
-    const handleMouseMove = (event: MouseEvent) => {
-      if (!document.pointerLockElement) return;
-      const index = activeIndexRef.current;
-      if (index < 0) return;
-
-      setModifications((previous) => {
-        const updated = [...previous];
-        const current = updated[index];
-
-        if (event.ctrlKey) {
-          updated[index] = {
-            ...current,
-            translateX: current.translateX + event.movementX,
-            translateY: current.translateY + event.movementY,
-          };
-        } else if (event.shiftKey) {
-          const newPaddingY = Math.max(
-            PADDING_MIN_PX,
-            Math.min(
-              PADDING_MAX_PX,
-              current.paddingY - event.movementY * MOUSE_PADDING_SENSITIVITY,
-            ),
-          );
-          updated[index] = { ...current, paddingY: Math.round(newPaddingY) };
-        } else {
-          const newPosition = Math.max(
-            0,
-            Math.min(SLIDER_MAX, current.position - event.movementY * MOUSE_COLOR_SENSITIVITY),
-          );
-          const newSize = Math.max(
-            FONT_SIZE_MIN_PX,
-            Math.min(FONT_SIZE_MAX_PX, current.fontSize + event.movementX * MOUSE_SIZE_SENSITIVITY),
-          );
-          updated[index] = {
-            ...current,
-            position: roundToStep(newPosition),
-            fontSize: roundToHalf(newSize),
-          };
+      if (event.key.toLowerCase() === "t") {
+        event.preventDefault();
+        if (isEnabled) {
+          clearSession(true);
+          return;
         }
 
-        applyModification(updated[index], scalesRef.current, activeScaleRef.current);
-        setInputValue(String(updated[index].position));
-        return updated;
-      });
-    };
-
-    requestLock();
-    document.addEventListener("mousemove", handleMouseMove, true);
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove, true);
-      releaseLock();
-    };
-  }, [hasModifications, picking]);
-
-  const gatherRepositionContexts = async (
-    modifications: Modification[],
-  ): Promise<Map<number, RepositionContext>> => {
-    const contextMap = new Map<number, RepositionContext>();
-    for (let index = 0; index < modifications.length; index++) {
-      const modification = modifications[index];
-      if (modification.translateX !== 0 || modification.translateY !== 0) {
-        const context = await gatherRepositionContext(
-          modification.element,
-          modification.translateX,
-          modification.translateY,
-        );
-        if (context) contextMap.set(index, context);
+        setIsEnabled(true);
+        return;
       }
-    }
-    return contextMap;
-  };
 
-  useEffect(() => {
-    if (!hasModifications) return;
+      if (!isEnabled) {
+        return;
+      }
 
-    const handleKeyDown = async (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        releaseLock();
-        const contextMap = await gatherRepositionContexts(modificationsRef.current);
-        const prompt = generatePrompt(
-          modificationsRef.current,
-          scalesRef.current,
-          activeScaleRef.current,
-          contextMap,
-        );
-        navigator.clipboard.writeText(prompt);
-        modificationsRef.current.forEach(restoreModification);
-        setModifications([]);
-        setActiveIndex(-1);
-        setInputValue("");
+        clearSession(true);
+        return;
       }
 
       if (event.key === "Enter") {
         event.preventDefault();
-        releaseLock();
-        const contextMap = await gatherRepositionContexts(modificationsRef.current);
-        const prompt = generatePrompt(
-          modificationsRef.current,
-          scalesRef.current,
-          activeScaleRef.current,
-          contextMap,
-        );
-        navigator.clipboard.writeText(prompt);
-        setPicking(true);
+        void copyPromptToClipboard();
       }
     };
 
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [hasModifications]);
-
-  useEffect(() => {
-    if (!activeMod || picking) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
-      if (event.key === "Escape") return;
-
-      if ((event.key >= "0" && event.key <= "9") || event.key === ".") {
-        event.preventDefault();
-        const next = typingBuffer.current + event.key;
-
-        if (event.key === "." && typingBuffer.current.includes(".")) return;
-
-        const hasDecimal = typingBuffer.current.includes(".");
-        if (hasDecimal && event.key !== "." && typingBuffer.current.split(".")[1]?.length >= 1) {
-          return;
-        }
-
-        const parsed = parseFloat(next);
-        if (!isNaN(parsed) && parsed > SLIDER_MAX) {
-          typingBuffer.current = event.key === "." ? "." : event.key;
-        } else {
-          typingBuffer.current = next;
-        }
-
-        const value = parseFloat(typingBuffer.current);
-        if (!isNaN(value)) {
-          const clamped = Math.min(SLIDER_MAX, value);
-          updateActivePosition(clamped);
-          setInputValue(typingBuffer.current);
-        }
-
-        clearTimeout(typingTimeout.current);
-        typingTimeout.current = setTimeout(() => {
-          typingBuffer.current = "";
-        }, TYPING_RESET_DELAY_MS);
-      }
-
-      if (event.key === "Backspace") {
-        event.preventDefault();
-        typingBuffer.current = typingBuffer.current.slice(0, -1);
-        if (typingBuffer.current && typingBuffer.current !== ".") {
-          const value = Math.min(SLIDER_MAX, parseFloat(typingBuffer.current));
-          updateActivePosition(value);
-          setInputValue(typingBuffer.current);
-        }
-        clearTimeout(typingTimeout.current);
-        typingTimeout.current = setTimeout(() => {
-          typingBuffer.current = "";
-        }, TYPING_RESET_DELAY_MS);
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown, true);
     return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      clearTimeout(typingTimeout.current);
+      document.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [activeMod, picking, activeIndex, updateActivePosition]);
+  }, [clearSession, copyPromptToClipboard, isEnabled]);
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
-      if (event.key === "t") {
-        event.preventDefault();
-        setPicking(true);
-      }
-      if (hasModifications && (event.key === "b" || event.key === "f" || event.key === "d")) {
-        event.preventDefault();
-        const property: "bg" | "text" | "border" =
-          event.key === "b" ? "bg" : event.key === "f" ? "text" : "border";
-        const index = activeIndexRef.current;
-        if (index < 0) return;
-        setModifications((previous) => {
-          const updated = [...previous];
-          restoreModification(updated[index]);
-          updated[index] = { ...updated[index], property };
-          applyModification(updated[index], scalesRef.current, activeScaleRef.current);
-          return updated;
-        });
-      }
-    };
-
-    const handleMiddleClick = (event: MouseEvent) => {
-      if (event.button !== 1) return;
-      event.preventDefault();
-      setPicking(true);
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("mousedown", handleMiddleClick, true);
-    document.addEventListener("auxclick", handleMiddleClick, true);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("mousedown", handleMiddleClick, true);
-      document.removeEventListener("auxclick", handleMiddleClick, true);
-    };
-  }, [hasModifications]);
-
-  useEffect(() => {
-    return () => {
-      modifications.forEach(restoreModification);
-      releaseLock();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (activeMod) {
-      applyModification(activeMod, scales, activeScale);
+    if (!isEnabled) {
+      return;
     }
-  }, [activeMod?.position, activeMod?.fontSize, activeMod?.paddingY, activeScale, scales]);
-
-  useEffect(() => {
-    if (!picking) return;
-
-    let hoveredElement: HTMLElement | null = null;
 
     const handleMouseOver = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.closest("[data-tweaker]")) return;
-      hoveredElement = target;
-      target.style.outline = "2px solid #3b82f6";
-      target.style.outlineOffset = "2px";
+      if (activeDragRef.current) {
+        return;
+      }
+
+      const targetElement = getEventTargetElement(event.target);
+      if (!targetElement || targetElement.closest("[data-tweaker]")) {
+        return;
+      }
+
+      setHoveredElement(targetElement);
     };
 
     const handleMouseOut = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      target.style.outline = "";
-      target.style.outlineOffset = "";
-      if (hoveredElement === target) hoveredElement = null;
+      if (activeDragRef.current) {
+        return;
+      }
+
+      const targetElement = getEventTargetElement(event.target);
+      if (!targetElement || hoveredElementRef.current?.element !== targetElement) {
+        return;
+      }
+
+      clearHoveredElement();
     };
 
-    const handleClick = async (event: MouseEvent) => {
+    const handleMouseDown = (event: MouseEvent) => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      const targetElement = getEventTargetElement(event.target);
+      if (!targetElement || targetElement.closest("[data-tweaker]")) {
+        return;
+      }
+
       event.preventDefault();
       event.stopPropagation();
-      const target = event.target as HTMLElement;
-      if (target.closest("[data-tweaker]")) return;
+      clearHoveredElement();
 
-      target.style.outline = "";
-      target.style.outlineOffset = "";
+      const existingDraggedElement = draggedElementsRef.current.find(
+        (draggedElement) => draggedElement.element === targetElement,
+      );
+      const nextDraggedElement = existingDraggedElement ?? createDraggedElement(targetElement);
 
-      const computed = getComputedStyle(target);
-      const [bgRed, bgGreen, bgBlue, bgAlpha] = parseRgb(computed.backgroundColor);
-      const [textRed, textGreen, textBlue] = parseRgb(computed.color);
-      const [borderRed, borderGreen, borderBlue, borderAlpha] = parseRgb(computed.borderColor);
-      const hasBorder = borderAlpha > 0 && parseFloat(computed.borderWidth) > 0;
+      if (!existingDraggedElement) {
+        syncDraggedElements((previousDraggedElements) =>
+          upsertDraggedElement(previousDraggedElements, nextDraggedElement),
+        );
+        void hydrateDraggedElementMetadata(targetElement);
+      }
 
-      const hasBackground = bgAlpha > 0;
-      const defaultProperty: "bg" | "text" | "border" = hasBackground
-        ? "bg"
-        : hasBorder
-          ? "border"
-          : "text";
-      const targetOklch =
-        defaultProperty === "bg"
-          ? rgbToOklch(bgRed, bgGreen, bgBlue)
-          : defaultProperty === "border"
-            ? rgbToOklch(borderRed, borderGreen, borderBlue)
-            : rgbToOklch(textRed, textGreen, textBlue);
+      activeDragRef.current = {
+        element: targetElement,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startingTranslateX: nextDraggedElement.translateX,
+        startingTranslateY: nextDraggedElement.translateY,
+        currentTranslateX: nextDraggedElement.translateX,
+        currentTranslateY: nextDraggedElement.translateY,
+        didCrossDragThreshold: false,
+      };
+    };
 
-      const position = findClosestPosition(scales, activeScale, targetOklch);
-      const currentSize = parseFloat(computed.fontSize) || 16;
-      const currentPaddingY = parseFloat(computed.paddingTop) || 0;
+    const handleMouseMove = (event: MouseEvent) => {
+      const activeDragSession = activeDragRef.current;
+      if (!activeDragSession) {
+        return;
+      }
 
-      let componentName: string | null = null;
-      let sourceFile: string | null = null;
-      try {
-        const reactGrab = (window as unknown as Record<string, unknown>).__REACT_GRAB_MODULE__ as
-          | {
-              getStack: (
-                element: Element,
-              ) => Promise<
-                Array<{ fileName?: string; lineNumber?: number; functionName?: string }>
-              >;
-            }
-          | undefined;
-        if (reactGrab?.getStack) {
-          const stack = await reactGrab.getStack(target);
-          if (stack) {
-            for (const frame of stack) {
-              if (frame.fileName && !frame.fileName.includes("node_modules")) {
-                sourceFile = frame.fileName;
-                if (frame.functionName && /^[A-Z]/.test(frame.functionName)) {
-                  componentName = frame.functionName;
-                }
-                break;
-              }
-            }
-          }
-        }
-      } catch {}
+      event.preventDefault();
 
-      const newModification: Modification = {
-        element: target,
-        selector: getSelector(target),
-        componentName,
-        sourceFile,
-        textPreview: getTextPreview(target),
-        originalInlineBg: target.style.backgroundColor,
-        originalInlineColor: target.style.color,
-        originalInlineBorderColor: target.style.borderColor,
-        originalInlineFontSize: target.style.fontSize,
-        originalInlinePaddingTop: target.style.paddingTop,
-        originalInlinePaddingBottom: target.style.paddingBottom,
-        originalInlineMarginTop: target.style.marginTop,
-        originalInlineMarginBottom: target.style.marginBottom,
-        originalInlineTransform: target.style.transform,
-        property: defaultProperty,
-        position,
-        fontSize: currentSize,
-        paddingY: currentPaddingY,
-        translateX: 0,
-        translateY: 0,
+      const movementX = event.clientX - activeDragSession.startClientX;
+      const movementY = event.clientY - activeDragSession.startClientY;
+      const nextTranslateX = activeDragSession.startingTranslateX + movementX;
+      const nextTranslateY = activeDragSession.startingTranslateY + movementY;
+      const didCrossDragThreshold =
+        activeDragSession.didCrossDragThreshold ||
+        Math.hypot(movementX, movementY) >= TWEAKER_DRAG_THRESHOLD_PX;
+
+      activeDragRef.current = {
+        ...activeDragSession,
+        currentTranslateX: nextTranslateX,
+        currentTranslateY: nextTranslateY,
+        didCrossDragThreshold,
       };
 
-      setModifications((previous) => [...previous, newModification]);
-      setActiveIndex(modifications.length);
-      setInputValue(String(position));
-      setPicking(false);
+      const draggedElement = draggedElementsRef.current.find(
+        (innerDraggedElement) => innerDraggedElement.element === activeDragSession.element,
+      );
+      if (!draggedElement) {
+        return;
+      }
+
+      applyTranslatePreview({
+        ...draggedElement,
+        translateX: nextTranslateX,
+        translateY: nextTranslateY,
+      });
+    };
+
+    const handleMouseUp = (event: MouseEvent) => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      const activeDragSession = activeDragRef.current;
+      if (!activeDragSession) {
+        return;
+      }
+
+      event.preventDefault();
+
+      const finalTranslateX = activeDragSession.didCrossDragThreshold
+        ? activeDragSession.currentTranslateX
+        : activeDragSession.startingTranslateX;
+      const finalTranslateY = activeDragSession.didCrossDragThreshold
+        ? activeDragSession.currentTranslateY
+        : activeDragSession.startingTranslateY;
+
+      syncDraggedElements((previousDraggedElements) => {
+        const draggedElement = previousDraggedElements.find(
+          (innerDraggedElement) => innerDraggedElement.element === activeDragSession.element,
+        );
+        if (!draggedElement) {
+          return previousDraggedElements;
+        }
+
+        const committedDraggedElement = {
+          ...draggedElement,
+          translateX: finalTranslateX,
+          translateY: finalTranslateY,
+        };
+
+        if (committedDraggedElement.translateX === 0 && committedDraggedElement.translateY === 0) {
+          restoreTranslatePreview(committedDraggedElement);
+          return previousDraggedElements.filter(
+            (innerDraggedElement) => innerDraggedElement.element !== activeDragSession.element,
+          );
+        }
+
+        applyTranslatePreview(committedDraggedElement);
+        return upsertDraggedElement(previousDraggedElements, committedDraggedElement);
+      });
+
+      activeDragRef.current = null;
     };
 
     document.addEventListener("mouseover", handleMouseOver, true);
     document.addEventListener("mouseout", handleMouseOut, true);
-    document.addEventListener("click", handleClick, true);
+    document.addEventListener("mousedown", handleMouseDown, true);
+    document.addEventListener("mousemove", handleMouseMove, true);
+    window.addEventListener("mouseup", handleMouseUp, true);
 
     return () => {
       document.removeEventListener("mouseover", handleMouseOver, true);
       document.removeEventListener("mouseout", handleMouseOut, true);
-      document.removeEventListener("click", handleClick, true);
-      if (hoveredElement) {
-        hoveredElement.style.outline = "";
-        hoveredElement.style.outlineOffset = "";
-      }
+      document.removeEventListener("mousedown", handleMouseDown, true);
+      document.removeEventListener("mousemove", handleMouseMove, true);
+      window.removeEventListener("mouseup", handleMouseUp, true);
+      clearHoveredElement();
+      activeDragRef.current = null;
     };
-  }, [picking, activeScale, scales, modifications.length]);
+  }, [
+    clearHoveredElement,
+    hydrateDraggedElementMetadata,
+    isEnabled,
+    setHoveredElement,
+    syncDraggedElements,
+  ]);
 
-  const fillColor = activeMod
-    ? oklchToCssString(getColorAtPosition(scales, activeScale, activeMod.position))
-    : (scales[activeScale]?.shades["500"] ?? "rgba(255,255,255,0.3)");
+  useEffect(() => {
+    return () => {
+      clearTimeout(promptStatusTimeoutRef.current);
+      draggedElementsRef.current.forEach(restoreTranslatePreview);
+      clearHoveredElement();
+      activeDragRef.current = null;
+    };
+  }, [clearHoveredElement]);
 
-  const propertyLabel =
-    activeMod?.property === "text" ? "F" : activeMod?.property === "border" ? "D" : "B";
-
-  const isPaddingMode = shiftHeld && hasModifications && !picking;
-  const isDragMode = controlHeld && hasModifications && !picking;
-
-  const guideRect =
-    activeMod && !picking && !spaceHeld ? activeMod.element.getBoundingClientRect() : null;
-
-  const thumbX = activeMod
-    ? isPaddingMode
-      ? (MINIMAP_WIDTH_PX - THUMB_SIZE_PX) / 2
-      : ((activeMod.fontSize - FONT_SIZE_MIN_PX) / (FONT_SIZE_MAX_PX - FONT_SIZE_MIN_PX)) *
-        (MINIMAP_WIDTH_PX - THUMB_SIZE_PX)
-    : 0;
-  const thumbY = activeMod
-    ? isPaddingMode
-      ? (1 - (activeMod.paddingY - PADDING_MIN_PX) / (PADDING_MAX_PX - PADDING_MIN_PX)) *
-        (MINIMAP_HEIGHT_PX - THUMB_SIZE_PX)
-      : (1 - activeMod.position / SLIDER_MAX) * (MINIMAP_HEIGHT_PX - THUMB_SIZE_PX)
-    : MINIMAP_HEIGHT_PX - THUMB_SIZE_PX;
+  const movedDraggedElements = getMovedDraggedElements(draggedElements);
+  const statusMessage = getStatusMessage(isEnabled, promptStatus, movedDraggedElements.length);
 
   return (
-    <>
-      {guideRect && activeMod && (
-        <div data-tweaker style={guidelinesContainerStyle}>
-          <div
-            style={{
-              position: "absolute",
-              left: guideRect.left,
-              top: guideRect.top,
-              width: guideRect.width,
-              height: guideRect.height,
-              boxSizing: "border-box",
-              border: "1px solid rgba(59, 130, 246, 0.5)",
-              borderRadius: 1,
-            }}
-          />
-          {activeMod.paddingY > 0 && (
-            <>
-              <div
-                style={{
-                  position: "absolute",
-                  left: guideRect.left,
-                  top: guideRect.top,
-                  width: guideRect.width,
-                  height: Math.min(activeMod.paddingY, guideRect.height / 2),
-                  background: "rgba(255, 99, 132, 0.1)",
-                  borderBottom: "1px dashed rgba(255, 99, 132, 0.35)",
-                }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  left: guideRect.left,
-                  top: guideRect.bottom - Math.min(activeMod.paddingY, guideRect.height / 2),
-                  width: guideRect.width,
-                  height: Math.min(activeMod.paddingY, guideRect.height / 2),
-                  background: "rgba(255, 99, 132, 0.1)",
-                  borderTop: "1px dashed rgba(255, 99, 132, 0.35)",
-                }}
-              />
-            </>
-          )}
-          <div
-            style={{
-              position: "absolute",
-              left: guideRect.right + 8,
-              top: guideRect.top,
-              display: "flex",
-              flexDirection: "column",
-              gap: 4,
-              pointerEvents: "none",
-            }}
-          >
-            <span style={guidelineLabelStyle}>↕ {activeMod.paddingY}px</span>
-            <span
-              style={{
-                ...guidelineLabelStyle,
-                color: "rgba(59, 130, 246, 0.8)",
-                background: "rgba(59, 130, 246, 0.06)",
-              }}
-            >
-              {activeMod.fontSize}px
-            </span>
-            {(activeMod.translateX !== 0 || activeMod.translateY !== 0) && (
-              <span
-                style={{
-                  ...guidelineLabelStyle,
-                  color: "rgba(168, 85, 247, 0.9)",
-                  background: "rgba(168, 85, 247, 0.08)",
-                }}
-              >
-                {Math.round(activeMod.translateX)}, {Math.round(activeMod.translateY)}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-      <AnimatePresence>
-        {(hasModifications || picking) && (
-          <motion.div
-            key="minimap"
-            data-tweaker
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            transition={{ duration: 0.2 }}
-            style={minimapContainerStyle}
-          >
-            <div style={minimapFieldStyle}>
-              <div
-                style={{
-                  position: "absolute",
-                  left: thumbX,
-                  top: thumbY,
-                  width: THUMB_SIZE_PX,
-                  height: THUMB_SIZE_PX,
-                  borderRadius: "50%",
-                  background: fillColor,
-                  border: "2px solid rgba(255,255,255,0.9)",
-                  boxShadow: "0 1px 4px rgba(0,0,0,0.4)",
-                  transition: "left 50ms, top 50ms",
-                }}
-              />
-            </div>
-            <div style={minimapModeStyle}>
-              <span style={minimapLabelStyle}>
-                {isDragMode ? "⌃ Move" : isPaddingMode ? "⇧ Padding" : "Style"}
-              </span>
-            </div>
-            <div style={minimapValuesStyle}>
-              <span style={minimapLabelStyle}>
-                {picking
-                  ? "Picking…"
-                  : isDragMode
-                    ? `x: ${activeMod?.translateX ?? 0}`
-                    : isPaddingMode
-                      ? `↕ ${activeMod?.paddingY ?? 0}px`
-                      : `${propertyLabel} ${inputValue || "0"}`}
-              </span>
-              {!picking && activeMod && isDragMode && (
-                <span style={minimapLabelStyle}>{`y: ${activeMod.translateY}`}</span>
-              )}
-              {!picking && activeMod && !isPaddingMode && !isDragMode && (
-                <span style={minimapLabelStyle}>{`${activeMod.fontSize}px`}</span>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
+    <div data-tweaker style={tweakerContainerStyle}>
+      <button
+        type="button"
+        onClick={() => {
+          if (isEnabled) {
+            clearSession(true);
+            return;
+          }
+
+          setIsEnabled(true);
+        }}
+        style={{
+          ...tweakerButtonStyle,
+          background: isEnabled ? "rgba(59, 130, 246, 0.92)" : "rgba(15, 23, 42, 0.92)",
+        }}
+      >
+        {isEnabled ? "Tweaker on" : "Tweaker off"}
+      </button>
+      <div
+        style={{
+          ...tweakerStatusStyle,
+          opacity: isEnabled || promptStatus !== "idle" ? 1 : 0.8,
+        }}
+      >
+        {statusMessage}
+      </div>
+    </div>
   );
 };
 
@@ -621,62 +542,38 @@ const baseTextStyle: React.CSSProperties = {
   WebkitFontSmoothing: "antialiased",
 };
 
-const minimapContainerStyle: React.CSSProperties = {
+const tweakerContainerStyle: React.CSSProperties = {
   position: "fixed",
-  left: 16,
-  bottom: 16,
-  zIndex: 9999,
+  left: TWEAKER_OFFSET_PX,
+  bottom: TWEAKER_OFFSET_PX,
+  zIndex: TWEAKER_Z_INDEX,
   display: "flex",
   flexDirection: "column",
-  gap: 6,
+  alignItems: "flex-start",
+  gap: TWEAKER_BUTTON_GAP_PX,
 };
 
-const minimapFieldStyle: React.CSSProperties = {
-  position: "relative",
-  width: MINIMAP_WIDTH_PX,
-  height: MINIMAP_HEIGHT_PX,
-  borderRadius: 8,
-  background: "rgba(0,0,0,0.25)",
+const tweakerButtonStyle: React.CSSProperties = {
+  ...baseTextStyle,
+  border: 0,
+  borderRadius: TWEAKER_BUTTON_BORDER_RADIUS_PX,
+  padding: `${TWEAKER_BUTTON_PADDING_Y_PX}px ${TWEAKER_BUTTON_PADDING_X_PX}px`,
+  color: "white",
+  fontSize: TWEAKER_BUTTON_FONT_SIZE_PX,
+  cursor: "pointer",
+  boxShadow: "0 10px 30px rgba(15, 23, 42, 0.25)",
+};
+
+const tweakerStatusStyle: React.CSSProperties = {
+  ...baseTextStyle,
+  maxWidth: 320,
+  padding: `${TWEAKER_BUTTON_PADDING_Y_PX}px ${TWEAKER_BUTTON_PADDING_X_PX}px`,
+  borderRadius: TWEAKER_BUTTON_PADDING_X_PX,
+  background: "rgba(15, 23, 42, 0.82)",
+  color: "rgba(255,255,255,0.86)",
+  fontSize: TWEAKER_STATUS_FONT_SIZE_PX,
+  lineHeight: 1.45,
   backdropFilter: "blur(12px)",
   WebkitBackdropFilter: "blur(12px)",
-  boxShadow: "0 0 0 1px rgba(255,255,255,0.08) inset",
-  overflow: "hidden",
-  pointerEvents: "none",
-};
-
-const minimapModeStyle: React.CSSProperties = {
-  padding: "0 2px",
-  pointerEvents: "none",
-};
-
-const minimapValuesStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  padding: "0 2px",
-  pointerEvents: "none",
-};
-
-const minimapLabelStyle: React.CSSProperties = {
-  ...baseTextStyle,
-  fontSize: 11,
-  color: "rgba(255,255,255,0.6)",
-  whiteSpace: "nowrap",
-};
-
-const guidelinesContainerStyle: React.CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  zIndex: 9998,
-  pointerEvents: "none",
-};
-
-const guidelineLabelStyle: React.CSSProperties = {
-  ...baseTextStyle,
-  fontSize: 10,
-  lineHeight: "16px",
-  color: "rgba(255, 99, 132, 0.9)",
-  background: "rgba(255, 99, 132, 0.08)",
-  padding: "0 5px",
-  borderRadius: 3,
-  whiteSpace: "nowrap",
+  boxShadow: "0 10px 30px rgba(15, 23, 42, 0.18)",
 };

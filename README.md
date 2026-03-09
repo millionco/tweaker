@@ -1,11 +1,11 @@
 # tweaker
 
-A dev tool for tweaking colors along gray scales in React apps. Pick any element, adjust its color along a gray scale, then copy the result as an AI-ready prompt.
+A dev tool for dragging page elements and turning the result into an AI-ready DOM repositioning prompt.
 
 ## Install
 
 ```bash
-npm install tweaker
+npm install @ben-million/tweaker
 ```
 
 ## Usage
@@ -13,7 +13,7 @@ npm install tweaker
 Add the `<Tweaker />` component to your app layout, ideally only in development:
 
 ```tsx
-import { Tweaker } from "tweaker";
+import { Tweaker } from "@ben-million/tweaker";
 
 const App = () => (
   <>
@@ -23,65 +23,42 @@ const App = () => (
 );
 ```
 
-### With a specific scale
-
-```tsx
-<Tweaker activeScale="slate" />
-```
-
-### With custom scales
-
-```tsx
-import { Tweaker } from "tweaker";
-import type { GrayScale } from "tweaker";
-
-const customScales: Record<string, GrayScale> = {
-  brand: {
-    label: "Brand",
-    shades: {
-      "50": "oklch(0.985 0.003 250)",
-      "100": "oklch(0.968 0.006 250)",
-      // ... 200-950
-    },
-  },
-};
-
-<Tweaker scales={customScales} activeScale="brand" />;
-```
-
 ## Keybinds
 
-| Key         | Action                                                 |
-| ----------- | ------------------------------------------------------ |
-| `T`         | Enter picking mode                                     |
-| `B`         | Switch to background color                             |
-| `F`         | Switch to text (foreground) color                      |
-| `D`         | Switch to border color                                 |
-| `Space`     | Persist current change, copy prompt, pick next element |
-| `Escape`    | Copy prompt, restore all changes, and exit             |
-| `0-9` / `.` | Type a value directly (0–10 scale)                     |
+| Key      | Action                                     |
+| -------- | ------------------------------------------ |
+| `T`      | Toggle Tweaker on or off                   |
+| `Enter`  | Copy the current DOM repositioning prompt  |
+| `Escape` | Restore all previews, clear state, and off |
 
 ## Workflow
 
-1. Press `T` or click the pill to start picking
-2. Click an element — its color is detected and mapped to the gray scale
-3. Move your mouse up/down to adjust the shade (vertical slider)
-4. Press `B`, `F`, or `D` to switch between background, text, or border
-5. Press `Space` to persist and pick the next element (cumulative prompt)
-6. Press `Escape` to copy the full prompt and reset
+1. Toggle Tweaker on with `T` or the pill in the bottom-left corner
+2. Drag any element on the page to preview its new position
+3. Repeat for as many elements as you want
+4. Press `Enter` to copy a prompt that only describes DOM order and spacing changes
+5. Press `Escape` or toggle Tweaker off to restore all previews and clear the session
 
 The copied prompt is formatted for AI coding agents:
 
 ```
-Change the following colors using the design system's gray scale:
+Reposition the following dragged elements within their current parent in the DOM.
+Do not use CSS transforms in the final implementation — reorder the JSX and adjust spacing instead.
 
-- background color of div.card ("Settings") → Slate 200 (oklch(0.929 0.013 255.5))
-- text color of p.description ("Configure your...") → Slate 600 (oklch(0.446 0.043 257.3))
+- <Card> div.card ("Settings")
+  Source: src/components/card.tsx
+  Parent: <SettingsPanel> div.stack (flex, column, gap: 16px)
+  Drag preview: x=0px, y=-48px
+  Move from child #3 to child #1 (of 4)
+
+  Neighbors at target position:
+    Below: button.primary ("Save") — 16px gap
+
+  Current element margins: top=0px, bottom=0px
+
+  → Re-order this element in the JSX to be child #1 of its parent.
+  → The gaps match the parent's gap (16px) — no extra margins needed.
 ```
-
-## Built-in scales
-
-Neutral, Slate, Gray, Zinc, Stone, Mauve, Olive — matching Tailwind CSS v4 gray palettes.
 
 ## License
 

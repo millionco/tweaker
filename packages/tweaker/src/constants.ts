@@ -1,27 +1,13 @@
-export const SLIDER_MAX = 10;
 export const TEXT_PREVIEW_MAX_LENGTH = 30;
-export const TYPING_RESET_DELAY_MS = 1500;
-export const SHADE_KEYS = [
-  "50",
-  "100",
-  "200",
-  "300",
-  "400",
-  "500",
-  "600",
-  "700",
-  "800",
-  "900",
-  "950",
-];
-export const FONT_SIZE_MIN_PX = 1;
-export const FONT_SIZE_MAX_PX = 200;
-export const PADDING_MIN_PX = -200;
-export const PADDING_MAX_PX = 200;
-export const MOUSE_COLOR_SENSITIVITY = 0.02;
-export const MOUSE_SIZE_SENSITIVITY = 0.1;
-export const MOUSE_PADDING_SENSITIVITY = 0.2;
-export const MINIMAP_WIDTH_PX = 160;
-export const MINIMAP_HEIGHT_PX = 100;
-export const THUMB_SIZE_PX = 10;
-export const DOM_TREE_MAX_NODES = 40;
+export const TWEAKER_OFFSET_PX = 16;
+export const TWEAKER_Z_INDEX = 9999;
+export const TWEAKER_BUTTON_GAP_PX = 8;
+export const TWEAKER_BUTTON_PADDING_X_PX = 12;
+export const TWEAKER_BUTTON_PADDING_Y_PX = 8;
+export const TWEAKER_BUTTON_BORDER_RADIUS_PX = 999;
+export const TWEAKER_BUTTON_FONT_SIZE_PX = 12;
+export const TWEAKER_STATUS_FONT_SIZE_PX = 11;
+export const TWEAKER_DRAG_THRESHOLD_PX = 3;
+export const TWEAKER_HOVER_OUTLINE_WIDTH_PX = 2;
+export const TWEAKER_HOVER_OUTLINE_OFFSET_PX = 2;
+export const TWEAKER_STATUS_RESET_DELAY_MS = 2000;

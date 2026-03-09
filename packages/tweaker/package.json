@@ -1,12 +1,13 @@
 {
   "name": "@ben-million/tweaker",
   "version": "0.9.2",
-  "description": "A dev tool for tweaking colors along gray scales in React apps",
+  "description": "A dev tool for dragging page elements and generating DOM repositioning prompts",
   "keywords": [
-    "color",
-    "design-system",
     "dev-tools",
-    "gray-scale",
+    "dom",
+    "drag-and-drop",
+    "layout",
+    "prompt",
     "react"
   ],
   "homepage": "https://github.com/millionco/tweaker#readme",
@@ -33,14 +34,15 @@
   "scripts": {
     "dev": "tsdown --watch",
     "build": "rm -rf dist && NODE_ENV=production tsdown",
+    "test": "vitest run --environment jsdom",
     "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "motion": "^12.0.0"
   },
   "devDependencies": {
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "jsdom": "^28.1.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "tsdown": "^0.20.3"
   },
   "peerDependencies": {
